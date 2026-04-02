@@ -49,6 +49,7 @@ export interface PlacementRequirement {
   minLight?: number;
   maxLight?: number;
   minNutrients?: number;
+  maxNutrients?: number;
   hexType?: HexTile['type'][];
   adjacentTag?: CardTag;
   requiresOverlay?: CardTag; // must be placed on a hex with this tag
@@ -129,6 +130,7 @@ export interface RunState {
   turn: number;
   endTurnCost: number;
   cardsPlayedThisTurn: number;
+  totalActions: number;
   score: RunScore;
   phase: 'playing' | 'ended';
   selectedCardIndex: number | null;
@@ -140,6 +142,7 @@ export interface RunScore {
   peakIncome: number;
   diversity: number;
   population: number;
+  actions: number;
   turns: number;
   objectiveBonus: number;
   questBonus: number;

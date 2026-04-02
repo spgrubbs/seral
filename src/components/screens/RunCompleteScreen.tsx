@@ -39,7 +39,8 @@ export default function RunCompleteScreen({ score, regionName, establishCandidat
             <ScoreLine label="Peak Income" value={score.peakIncome} />
             <ScoreLine label="Species Diversity" value={score.diversity} />
             <ScoreLine label="Population" value={score.population} />
-            <ScoreLine label="Turns Survived" value={score.turns} />
+            <ScoreLine label="Actions Taken" value={score.actions} />
+            <ScoreLine label="Years Survived" value={score.turns} />
             <ScoreLine label="Synergy Chains" value={score.synergyBonus} />
             {score.objectiveBonus > 0 && (
               <ScoreLine label="Objective Bonus" value={score.objectiveBonus} highlight />
