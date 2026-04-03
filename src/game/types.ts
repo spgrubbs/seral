@@ -81,12 +81,41 @@ export interface Card {
   maxPropagation?: number; // max hexes to spread per turn
   sprite: string; // SVG path/shape identifier
   flavorText?: string;
+  consumable?: boolean; // abiotic/one-shot cards are consumed on use
+  rpCost?: number; // research point cost for unlocking abiotic cards
+  locked?: boolean; // not available at game start
 }
 
 // --- Region / Planet Map ---
 
 export type RegionState = 'locked' | 'barren' | 'pioneer' | 'grassland' | 'woodland' | 'climax' | 'disturbed';
 export type ClimateBand = 'polar' | 'temperate' | 'equatorial';
+
+/**
+ * LocalCondition — the defining environmental character of a region.
+ *
+ * normal          — no special modifier
+ * monsoon         — +1 water income per turn
+ * drought         — all hexes start with -1 moisture
+ * volcanic-soil   — all hexes start with +2 nutrients
+ * mineral-upwelling — rock hexes have nutrients 4-5; more rock hexes spawn
+ * windswept       — light is always 3 but moisture -1 on all hexes
+ * geothermal      — frozen hexes become normal; +1 biomass income on border hexes
+ */
+export type LocalCondition =
+  | 'normal'
+  | 'monsoon'
+  | 'drought'
+  | 'volcanic-soil'
+  | 'mineral-upwelling'
+  | 'windswept'
+  | 'geothermal';
+
+export interface Quest {
+  description: string;
+  targetType: 'population' | 'diversity' | 'biomass_income' | 'nutrient_income' | 'place_producers' | 'place_consumers';
+  targetValue: number;
+}
 
 export interface Region {
   id: string;
@@ -98,8 +127,8 @@ export interface Region {
   baseLight: number;
   baseNutrients: number;
   seedBank: Card[];
-  questDescription: string;
-  targetStage: RegionState;
+  quest: Quest;
+  localCondition: LocalCondition;
   mapSize: 'small' | 'medium' | 'large';
 }
 
@@ -109,6 +138,24 @@ export interface PlanetStats {
   thermalBalance: number;  // 1-5
 }
 
+// --- Planet Upgrades & Achievements ---
+
+export interface PlanetUpgrades {
+  freeTurnEnds: number;        // 0-3: first N turn-ends cost no biomass
+  startingBiomassBonus: number; // 0-3: bonus biomass at run start
+  ecologicalDrift: number;     // 0-2: seed bank species appear N+1 hexes away from center
+  unlockedAbioticIds: string[]; // abiotic card ids purchased with RP
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  reward: number;   // research points awarded
+  completed: boolean;
+  check: string;    // serializable check type, e.g. 'regions_pioneer_5' or 'diversity_10'
+}
+
 export interface Planet {
   name: string;
   regions: Region[];
@@ -116,6 +163,8 @@ export interface Planet {
   researchPoints: number;
   runsCompleted: number;
   unlockedCardIds: string[];
+  upgrades: PlanetUpgrades;
+  achievements: Achievement[];
 }
 
 // --- Run State ---

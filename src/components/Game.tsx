@@ -3,8 +3,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { GameState, Card, Planet, RunState, Region } from '@/game/types';
 import { createInitialGameState, startRun, calculateScore, getEstablishCandidates } from '@/game/state';
-import { generatePlanet, advanceRegion, getPlanetNeighbors } from '@/game/planet';
-import { getStarterDeck } from '@/game/cards';
+import { generatePlanet, advanceRegion, getPlanetNeighbors, checkAchievements } from '@/game/planet';
+import { getStarterDeck, ABIOTIC_CARDS, ALL_CARDS } from '@/game/cards';
 
 import TitleScreen from './screens/TitleScreen';
 import PlanetMap from './screens/PlanetMap';
@@ -28,10 +28,19 @@ function loadPlanet(): Planet | null {
   return null;
 }
 
+// Upgrade costs: each level costs more
+const UPGRADE_COSTS: Record<string, number[]> = {
+  freeTurnEnds: [30, 60, 100],          // levels 0→1, 1→2, 2→3
+  startingBiomassBonus: [20, 40, 80],
+  ecologicalDrift: [50, 100],            // max 2 levels
+};
+
+// Card unlock costs
+const CARD_UNLOCK_COST = 40;
+
 export default function Game() {
   const [gameState, setGameState] = useState<GameState>(() => {
-    const state = createInitialGameState();
-    return state;
+    return createInitialGameState();
   });
 
   const [savedPlanet, setSavedPlanet] = useState<Planet | null>(null);
@@ -39,7 +48,22 @@ export default function Game() {
   // Load saved planet on mount
   useEffect(() => {
     const saved = loadPlanet();
-    if (saved) setSavedPlanet(saved);
+    if (saved) {
+      // Migrate old saves that don't have upgrades/achievements
+      if (!saved.upgrades) {
+        saved.upgrades = {
+          freeTurnEnds: 0,
+          startingBiomassBonus: 0,
+          ecologicalDrift: 0,
+          unlockedAbioticIds: [],
+        };
+      }
+      if (!saved.achievements) {
+        // import would be circular, just set empty and let planet.ts handle
+        saved.achievements = [];
+      }
+      setSavedPlanet(saved);
+    }
   }, []);
 
   // --- Title Screen ---
@@ -74,13 +98,75 @@ export default function Game() {
     setGameState(prev => ({ ...prev, screen: 'title' }));
   }, []);
 
+  // --- Purchase Handlers ---
+  const handlePurchaseUpgrade = useCallback((upgradeType: string) => {
+    setGameState(prev => {
+      if (!prev.planet) return prev;
+      const planet = { ...prev.planet, upgrades: { ...prev.planet.upgrades } };
+      const costs = UPGRADE_COSTS[upgradeType];
+      if (!costs) return prev;
+
+      type NumericUpgrade = 'freeTurnEnds' | 'startingBiomassBonus' | 'ecologicalDrift';
+      const key = upgradeType as NumericUpgrade;
+      const currentLevel = planet.upgrades[key];
+      if (typeof currentLevel !== 'number' || currentLevel >= costs.length) return prev;
+      const cost = costs[currentLevel];
+      if (planet.researchPoints < cost) return prev;
+
+      planet.researchPoints -= cost;
+      planet.upgrades[key] = currentLevel + 1;
+
+      savePlanet(planet);
+      setSavedPlanet(planet);
+      return { ...prev, planet };
+    });
+  }, []);
+
+  const handlePurchaseAbiotic = useCallback((cardId: string) => {
+    setGameState(prev => {
+      if (!prev.planet) return prev;
+      const planet = { ...prev.planet, upgrades: { ...prev.planet.upgrades, unlockedAbioticIds: [...prev.planet.upgrades.unlockedAbioticIds] } };
+      if (planet.upgrades.unlockedAbioticIds.includes(cardId)) return prev; // already bought
+
+      const abioticCard = ABIOTIC_CARDS.find(c => c.id === cardId);
+      if (!abioticCard || !abioticCard.rpCost) return prev;
+      if (planet.researchPoints < abioticCard.rpCost) return prev;
+
+      planet.researchPoints -= abioticCard.rpCost;
+      planet.upgrades.unlockedAbioticIds.push(cardId);
+
+      savePlanet(planet);
+      setSavedPlanet(planet);
+      return { ...prev, planet };
+    });
+  }, []);
+
+  const handleUnlockCard = useCallback((cardId: string) => {
+    setGameState(prev => {
+      if (!prev.planet) return prev;
+      const planet = { ...prev.planet, unlockedCardIds: [...prev.planet.unlockedCardIds] };
+      if (planet.unlockedCardIds.includes(cardId)) return prev;
+
+      const card = ALL_CARDS.find(c => c.id === cardId);
+      if (!card) return prev;
+      if (planet.researchPoints < CARD_UNLOCK_COST) return prev;
+
+      planet.researchPoints -= CARD_UNLOCK_COST;
+      planet.unlockedCardIds.push(cardId);
+
+      savePlanet(planet);
+      setSavedPlanet(planet);
+      return { ...prev, planet };
+    });
+  }, []);
+
   // --- Deck Assembly ---
   const handleStartRunWithDeck = useCallback((deck: Card[]) => {
     if (!gameState.planet || !gameState.selectedRegionId) return;
     const region = gameState.planet.regions.find(r => r.id === gameState.selectedRegionId);
     if (!region) return;
 
-    const run = startRun(region, deck);
+    const run = startRun(region, deck, gameState.planet.upgrades);
     setGameState(prev => ({ ...prev, screen: 'run', currentRun: run }));
   }, [gameState.planet, gameState.selectedRegionId]);
 
@@ -98,7 +184,7 @@ export default function Game() {
     const region = gameState.planet.regions.find(r => r.id === gameState.selectedRegionId);
     if (!region) return;
 
-    const score = calculateScore(gameState.currentRun, region);
+    const score = calculateScore(gameState.currentRun, region.quest);
     const newRun = { ...gameState.currentRun, score, phase: 'ended' as const };
     setGameState(prev => ({ ...prev, screen: 'run-complete', currentRun: newRun }));
   }, [gameState.currentRun, gameState.planet, gameState.selectedRegionId]);
@@ -107,7 +193,7 @@ export default function Game() {
   const handleEstablish = useCallback((card: Card | null) => {
     if (!gameState.planet || !gameState.currentRun || !gameState.selectedRegionId) return;
 
-    const newPlanet = { ...gameState.planet };
+    const newPlanet = { ...gameState.planet, regions: gameState.planet.regions.map(r => ({ ...r })), upgrades: { ...gameState.planet.upgrades, unlockedAbioticIds: [...gameState.planet.upgrades.unlockedAbioticIds] }, achievements: gameState.planet.achievements.map(a => ({ ...a })) };
     const region = newPlanet.regions.find(r => r.id === gameState.selectedRegionId);
     if (!region) return;
 
@@ -134,18 +220,27 @@ export default function Game() {
     newPlanet.stats.hydrologicalActivity = Math.min(5, 1 + Math.floor(woodlandCount / 3));
     newPlanet.stats.thermalBalance = Math.min(5, 1 + Math.floor(woodlandCount / 2));
 
-    // Add research points
+    // Add research points from score
     newPlanet.researchPoints += gameState.currentRun.score.total;
     newPlanet.runsCompleted++;
 
-    // Regenerate quest
-    const quests = [
-      'Introduce a pollinator species', 'Establish a predator guild',
-      'Build a nitrogen-fixing network', 'Create a canopy cover',
-      'Establish aquatic life', 'Build a decomposer chain',
-      'Achieve high species diversity', 'Maximize biomass production',
+    // Check achievements
+    const diversity = new Set<string>();
+    gameState.currentRun.hexGrid.forEach(tile => {
+      if (tile.placedCard) diversity.add(tile.placedCard.card.id);
+    });
+    checkAchievements(newPlanet, gameState.currentRun.score.total, diversity.size);
+
+    // Regenerate quest (pick a new random quest)
+    const QUESTS = [
+      { description: 'Place at least 8 organisms', targetType: 'population' as const, targetValue: 8 },
+      { description: 'Have 5+ distinct species on the field', targetType: 'diversity' as const, targetValue: 5 },
+      { description: 'Reach +6 biomass income per turn', targetType: 'biomass_income' as const, targetValue: 6 },
+      { description: 'Reach +4 nutrient income per turn', targetType: 'nutrient_income' as const, targetValue: 4 },
+      { description: 'Place 6 producer species', targetType: 'place_producers' as const, targetValue: 6 },
+      { description: 'Place 3 consumer or decomposer species', targetType: 'place_consumers' as const, targetValue: 3 },
     ];
-    region.questDescription = quests[Math.floor(Math.random() * quests.length)];
+    region.quest = QUESTS[Math.floor(Math.random() * QUESTS.length)];
 
     savePlanet(newPlanet);
     setSavedPlanet(newPlanet);
@@ -177,6 +272,8 @@ export default function Game() {
         onSelectRegion={handleSelectRegion}
         onStartRun={handleStartRunFromMap}
         onBack={handleBackToTitle}
+        onPurchaseUpgrade={handlePurchaseUpgrade}
+        onPurchaseAbiotic={handlePurchaseAbiotic}
       />
     );
   }
@@ -187,6 +284,7 @@ export default function Game() {
       <DeckAssembly
         region={region}
         unlockedCardIds={planet.unlockedCardIds}
+        unlockedAbioticIds={planet.upgrades.unlockedAbioticIds}
         suggestedDeck={gameState.assembledDeck}
         onStartRun={handleStartRunWithDeck}
         onBack={handleBackToMap}
@@ -200,7 +298,8 @@ export default function Game() {
       <RunScreen
         run={currentRun}
         regionName={region.name}
-        questDescription={region.questDescription}
+        quest={region.quest}
+        freeTurnEnds={planet.upgrades.freeTurnEnds}
         onUpdate={handleRunUpdate}
         onEndRun={handleEndRun}
       />

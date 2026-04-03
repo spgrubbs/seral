@@ -187,6 +187,31 @@ const sprites: Record<string, React.ReactNode> = {
       <circle cx="3" cy="1" r="1" fill="#6D4C41" />
     </g>
   ),
+  bacteria: (
+    <g>
+      <circle cx="-3" cy="-2" r="2" fill="#A1887F" />
+      <circle cx="2" cy="1" r="2.5" fill="#8D6E63" />
+      <circle cx="-1" cy="3" r="1.5" fill="#BCAAA4" />
+      <circle cx="4" cy="-3" r="1.5" fill="#A1887F" />
+      <ellipse cx="0" cy="0" rx="1" ry="3" fill="#D7CCC8" opacity="0.4" />
+    </g>
+  ),
+  radiotroph: (
+    <g>
+      <circle cx="0" cy="0" r="5" fill="#7E57C2" opacity="0.7" />
+      <circle cx="0" cy="0" r="3" fill="#9575CD" />
+      <circle cx="-2" cy="-2" r="1.5" fill="#B39DDB" />
+      <circle cx="2" cy="1" r="1" fill="#EDE7F6" />
+    </g>
+  ),
+  'mineral-crust': (
+    <g>
+      <rect x="-6" y="-1" width="12" height="4" fill="#78909C" rx="1" />
+      <polygon points="-4,-3 -2,0 -6,0" fill="#90A4AE" />
+      <polygon points="3,-4 5,-1 1,-1" fill="#B0BEC5" />
+      <circle cx="0" cy="0" r="1.5" fill="#CFD8DC" />
+    </g>
+  ),
 };
 
 export function CardSprite({ sprite, size = 1 }: { sprite: string; size?: number }) {

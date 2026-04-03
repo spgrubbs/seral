@@ -1,4 +1,4 @@
-import { HexCoord, HexTile, hexKey, Card, PlacedCard, CardTag } from './types';
+import { HexCoord, HexTile, hexKey, Card, PlacedCard, CardTag, LocalCondition } from './types';
 
 // ============================================================
 // Hex Grid Generation & Utilities
@@ -44,30 +44,53 @@ export function generateHexGrid(
   baseLight: number,
   baseNutrients: number,
   seed: number = Date.now(),
+  localCondition: LocalCondition = 'normal',
 ): Map<string, HexTile> {
   const grid = new Map<string, HexTile>();
   const rng = seededRandom(seed);
 
+  // Local condition modifiers
+  const moistureMod = localCondition === 'drought' ? -1 : localCondition === 'windswept' ? -1 : 0;
+  const nutrientMod = localCondition === 'volcanic-soil' ? 2 : 0;
+  const forcedLight = localCondition === 'windswept' ? 3 : null;
+  const moreRocks = localCondition === 'mineral-upwelling';
+
   for (let q = -radius; q <= radius; q++) {
     for (let r = -radius; r <= radius; r++) {
-      // Skip hexes too far from center to make roughly circular shape
       const dist = hexDistance({ q, r }, { q: 0, r: 0 });
       if (dist > radius) continue;
 
-      const moisture = clamp(baseMoisture + Math.floor(rng() * 3) - 1, 0, 5);
-      const light = clamp(baseLight + (rng() > 0.7 ? -1 : 0), 1, 3);
-      const nutrients = clamp(baseNutrients + Math.floor(rng() * 3) - 1, 1, 5);
+      let moisture = clamp(baseMoisture + Math.floor(rng() * 3) - 1 + moistureMod, 0, 5);
+      const light = forcedLight ?? clamp(baseLight + (rng() > 0.7 ? -1 : 0), 1, 3);
+      let nutrients = clamp(baseNutrients + Math.floor(rng() * 3) - 1 + nutrientMod, 1, 5);
 
       // Determine special hex types
       let type: HexTile['type'] = 'normal';
+      const rockChance = moreRocks ? 0.22 : 0.1;
       if (rng() < 0.1) type = 'water';
-      else if (rng() < 0.12) type = 'rock';
+      else if (rng() < rockChance) type = 'rock';
+
+      // Rock hexes have LOW nutrients by default (1-2)
+      // Unless mineral-upwelling condition
+      if (type === 'rock') {
+        nutrients = moreRocks ? clamp(4 + Math.floor(rng() * 2), 4, 5) : clamp(1 + Math.floor(rng() * 2), 1, 2);
+        moisture = 0; // rocks are dry
+      }
+
+      if (type === 'water') {
+        moisture = 5;
+      }
+
+      // Geothermal: frozen hexes become normal
+      if (localCondition === 'geothermal' && (type as string) === 'frozen') {
+        type = 'normal';
+      }
 
       const tile: HexTile = {
         coord: { q, r },
-        moisture: type === 'water' ? 5 : moisture,
-        light: type === 'rock' ? 3 : light,
-        nutrients: type === 'rock' ? 4 : nutrients,
+        moisture,
+        light,
+        nutrients,
         type,
         placedCard: null,
       };

@@ -2,7 +2,6 @@
 
 import React, { useMemo, useState } from 'react';
 import { HexTile, HexCoord, hexKey, Card } from '@/game/types';
-import { hexToPixel } from '@/game/hex';
 import { CardSprite } from './Sprites';
 
 interface HexGridProps {
@@ -61,12 +60,15 @@ function nutrientChevrons(nutrients: number): React.ReactNode {
   return <g>{chevs}</g>;
 }
 
-/** Flat-top hex pixel position for snug tiling with offset (odd-q) coords */
-function flatHexToPixel(coord: HexCoord, size: number): { x: number; y: number } {
+/** Flat-top hex pixel position for snug tiling with offset (odd-q) coords.
+ *  Y-axis is inverted so that grid row 0 appears at the bottom. */
+function flatHexToPixel(coord: HexCoord, size: number, maxR: number): { x: number; y: number } {
   const w = size * 2;
   const h = Math.sqrt(3) * size;
   const x = coord.q * (w * 3 / 4);
-  const y = coord.r * h + (coord.q % 2 !== 0 ? h / 2 : 0);
+  // Invert r so that higher r values go UP visually
+  const invertedR = maxR - coord.r;
+  const y = invertedR * h + (coord.q % 2 !== 0 ? h / 2 : 0);
   return { x, y };
 }
 
@@ -74,8 +76,11 @@ export default function HexGrid({ grid, selectedCard, validPlacements, onHexClic
   const tiles = useMemo(() => Array.from(grid.values()), [grid]);
   const [hoveredHex, setHoveredHex] = useState<string | null>(null);
 
+  // Find max r value for y-axis inversion
+  const maxR = useMemo(() => Math.max(...tiles.map(t => t.coord.r)), [tiles]);
+
   // Calculate bounds for viewBox
-  const positions = tiles.map(t => flatHexToPixel(t.coord, hexSize));
+  const positions = tiles.map(t => flatHexToPixel(t.coord, hexSize, maxR));
   const pad = hexSize * 1.5;
   const minX = Math.min(...positions.map(p => p.x)) - pad;
   const maxX = Math.max(...positions.map(p => p.x)) + pad;
@@ -84,7 +89,7 @@ export default function HexGrid({ grid, selectedCard, validPlacements, onHexClic
   const width = maxX - minX;
   const height = maxY - minY;
 
-  // Flat-top hex path (rotated 90° from pointy-top)
+  // Flat-top hex path
   const hexPath = useMemo(() => {
     const s = hexSize;
     const points = [];
@@ -105,7 +110,7 @@ export default function HexGrid({ grid, selectedCard, validPlacements, onHexClic
         style={{ maxHeight: '55vh' }}
       >
         {tiles.map(tile => {
-          const pos = flatHexToPixel(tile.coord, hexSize);
+          const pos = flatHexToPixel(tile.coord, hexSize, maxR);
           const key = hexKey(tile.coord);
           const isValid = validPlacements.has(key);
           const isHovered = hoveredHex === key;
@@ -166,13 +171,10 @@ export default function HexGrid({ grid, selectedCard, validPlacements, onHexClic
         })}
       </svg>
 
-      {/* Hex tooltip */}
+      {/* Hex tooltip — no coordinates shown */}
       {hoveredTile && (
         <div className="absolute bottom-2 left-2 right-2 bg-slate-900/95 border border-slate-700 rounded-lg p-2.5 text-xs z-40 pointer-events-none animate-fade-in">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-slate-400 font-mono text-[10px]">
-              ({hoveredTile.coord.q}, {hoveredTile.coord.r})
-            </span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 capitalize text-slate-300">
               {hoveredTile.type}
             </span>

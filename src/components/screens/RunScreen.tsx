@@ -1,28 +1,31 @@
 'use client';
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { RunState, HexCoord, hexKey, Card } from '@/game/types';
+import { RunState, HexCoord, hexKey, Card, Quest } from '@/game/types';
 import { getValidPlacements } from '@/game/hex';
-import { playCard, endTurn, calculateProjectedIncome } from '@/game/state';
+import { playCard, endTurn, calculateProjectedIncome, calculateScore } from '@/game/state';
 import HexGrid from '@/components/hex/HexGrid';
 import CardHand from '@/components/cards/CardHand';
 
 interface RunScreenProps {
   run: RunState;
   regionName: string;
-  questDescription: string;
+  quest: Quest;
+  freeTurnEnds: number;
   onUpdate: (run: RunState) => void;
   onEndRun: () => void;
 }
 
-function ResourceBar({ resources, turn, endTurnCost, run }: {
+function ResourceBar({ resources, turn, endTurnCost, run, freeTurnEnds, liveScore }: {
   resources: { biomass: number; nutrients: number; water: number };
   turn: number;
   endTurnCost: number;
   run: RunState;
+  freeTurnEnds: number;
+  liveScore: number;
 }) {
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const projected = calculateProjectedIncome(run);
+  const projected = calculateProjectedIncome(run, freeTurnEnds);
 
   function formatNet(val: number): string {
     if (val > 0) return `+${val}`;
@@ -51,7 +54,6 @@ function ResourceBar({ resources, turn, endTurnCost, run }: {
             <span className={`${netColor(projected.total.biomass)} text-[10px]`}>
               ({formatNet(projected.total.biomass)})
             </span>
-            <span className="text-slate-500">B</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
@@ -59,7 +61,6 @@ function ResourceBar({ resources, turn, endTurnCost, run }: {
             <span className={`${netColor(projected.total.nutrients)} text-[10px]`}>
               ({formatNet(projected.total.nutrients)})
             </span>
-            <span className="text-slate-500">N</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
@@ -67,11 +68,13 @@ function ResourceBar({ resources, turn, endTurnCost, run }: {
             <span className={`${netColor(projected.total.water)} text-[10px]`}>
               ({formatNet(projected.total.water)})
             </span>
-            <span className="text-slate-500">W</span>
           </span>
         </div>
-        <div className="text-slate-400">
-          Year <span className="text-white font-bold">{turn}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-amber-300 font-semibold">{liveScore} pts</span>
+          <span className="text-slate-400">
+            Year <span className="text-white font-bold">{turn}</span>
+          </span>
         </div>
       </div>
 
@@ -116,7 +119,7 @@ function ResourceBar({ resources, turn, endTurnCost, run }: {
   );
 }
 
-export default function RunScreen({ run, regionName, questDescription, onUpdate, onEndRun }: RunScreenProps) {
+export default function RunScreen({ run, regionName, quest, freeTurnEnds, onUpdate, onEndRun }: RunScreenProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
@@ -128,9 +131,12 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
     return new Set(valid.map(c => hexKey(c)));
   }, [selectedCard, run.hexGrid]);
 
-  const canAffordEndTurn = run.resources.biomass >= run.endTurnCost;
+  // Live score calculation
+  const liveScore = useMemo(() => {
+    return calculateScore(run, quest);
+  }, [run, quest]);
 
-  // Determine end-turn button state
+  const canAffordEndTurn = run.resources.biomass >= run.endTurnCost;
   const shouldEndRun = run.cardsPlayedThisTurn === 0 || !canAffordEndTurn;
 
   const handleSelectCard = useCallback((idx: number) => {
@@ -181,11 +187,11 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
     }
 
     const newRun = { ...run };
-    endTurn(newRun);
+    endTurn(newRun, freeTurnEnds);
     onUpdate(newRun);
     setMessage(`Year ${newRun.turn} begins`);
     setTimeout(() => setMessage(null), 1500);
-  }, [run, onUpdate, shouldEndRun]);
+  }, [run, onUpdate, shouldEndRun, freeTurnEnds]);
 
   const handleConfirmEndRun = useCallback(() => {
     setShowEndConfirm(false);
@@ -216,12 +222,20 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
         </div>
       </div>
 
-      {/* Resource Bar */}
-      <ResourceBar resources={run.resources} turn={run.turn} endTurnCost={run.endTurnCost} run={run} />
+      {/* Resource Bar with live score */}
+      <ResourceBar
+        resources={run.resources}
+        turn={run.turn}
+        endTurnCost={run.endTurnCost}
+        run={run}
+        freeTurnEnds={freeTurnEnds}
+        liveScore={liveScore.total}
+      />
 
       {/* Quest banner */}
       <div className="px-3 py-1 bg-amber-900/20 text-amber-300 text-[10px] text-center">
-        {questDescription}
+        {quest.description}
+        {liveScore.questBonus > 0 && <span className="ml-1 text-emerald-400">✓</span>}
       </div>
 
       {/* Hex Grid */}
@@ -242,7 +256,7 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
         </div>
       )}
 
-      {/* End Turn / End Run confirmation */}
+      {/* End Run confirmation */}
       {showEndConfirm && (
         <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 mx-4 max-w-sm">
@@ -278,6 +292,7 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
           selectedIndex={run.selectedCardIndex}
           onSelectCard={handleSelectCard}
           resources={run.resources}
+          endTurnCost={run.endTurnCost}
         />
       </div>
 
