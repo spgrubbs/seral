@@ -54,7 +54,7 @@ export function generateHexGrid(
       const dist = hexDistance({ q, r }, { q: 0, r: 0 });
       if (dist > radius) continue;
 
-      const moisture = clamp(baseMoisture + Math.floor(rng() * 3) - 1, 1, 5);
+      const moisture = clamp(baseMoisture + Math.floor(rng() * 3) - 1, 0, 5);
       const light = clamp(baseLight + (rng() > 0.7 ? -1 : 0), 1, 3);
       const nutrients = clamp(baseNutrients + Math.floor(rng() * 3) - 1, 1, 5);
 
@@ -108,16 +108,33 @@ function seededRandom(seed: number): () => number {
 /** Check if a card can be placed on a hex tile */
 export function canPlaceCard(card: Card, tile: HexTile, grid: Map<string, HexTile>): boolean {
   if (card.type === 'event') return true; // events don't need hex placement
-  if (tile.placedCard && card.type !== 'species') return false;
+
+  // Can't place on occupied hex unless overlay is allowed
   if (tile.placedCard && !card.placement.requiresOverlay) return false;
 
   const req = card.placement;
-  if (req.minMoisture && tile.moisture < req.minMoisture) return false;
-  if (req.maxMoisture && tile.moisture > req.maxMoisture) return false;
-  if (req.minLight && tile.light < req.minLight) return false;
-  if (req.maxLight && tile.light > req.maxLight) return false;
-  if (req.minNutrients && tile.nutrients < req.minNutrients) return false;
-  if (req.hexType && !req.hexType.includes(tile.type)) return false;
+
+  // Special hex types: water and rock require explicit hexType permission
+  if (tile.type === 'water' && (!req.hexType || !req.hexType.includes('water'))) return false;
+  if (tile.type === 'rock') {
+    // Only abiotic cards targeting rock, or species explicitly allowing rock
+    if (card.type === 'abiotic') {
+      if (req.hexType && !req.hexType.includes('rock')) return false;
+    } else {
+      if (!req.hexType?.includes('rock')) return false;
+    }
+  }
+
+  // If card requires specific hex types, check them
+  if (req.hexType && req.hexType.length > 0 && !req.hexType.includes(tile.type)) return false;
+
+  // Condition range checks (use !== undefined so 0 values are valid)
+  if (req.minMoisture !== undefined && tile.moisture < req.minMoisture) return false;
+  if (req.maxMoisture !== undefined && tile.moisture > req.maxMoisture) return false;
+  if (req.minLight !== undefined && tile.light < req.minLight) return false;
+  if (req.maxLight !== undefined && tile.light > req.maxLight) return false;
+  if (req.minNutrients !== undefined && tile.nutrients < req.minNutrients) return false;
+  if (req.maxNutrients !== undefined && tile.nutrients > req.maxNutrients) return false;
 
   if (req.adjacentTag) {
     const neighbors = hexNeighbors(tile.coord);
@@ -126,11 +143,6 @@ export function canPlaceCard(card: Card, tile: HexTile, grid: Map<string, HexTil
       return neighbor?.placedCard?.card.tags.includes(req.adjacentTag as CardTag);
     });
     if (!hasTag) return false;
-  }
-
-  // Rock hexes can only receive abiotic cards or cards that specifically allow rock
-  if (tile.type === 'rock' && card.type === 'species') {
-    if (!req.hexType?.includes('rock')) return false;
   }
 
   return true;
@@ -154,10 +166,10 @@ export function applyAbioticEffect(card: Card, targetCoord: HexCoord, grid: Map<
   if (!tile) return;
 
   if (card.id === 'drainage-redirect') {
-    tile.moisture = clamp(tile.moisture + 2, 1, 5);
+    tile.moisture = clamp(tile.moisture + 2, 0, 5);
     hexNeighbors(targetCoord).forEach(n => {
       const neighbor = grid.get(hexKey(n));
-      if (neighbor) neighbor.moisture = clamp(neighbor.moisture + 1, 1, 5);
+      if (neighbor) neighbor.moisture = clamp(neighbor.moisture + 1, 0, 5);
     });
   } else if (card.id === 'mineral-amendment') {
     tile.nutrients = clamp(tile.nutrients + 3, 1, 5);
@@ -171,7 +183,7 @@ export function applyAbioticEffect(card: Card, targetCoord: HexCoord, grid: Map<
 export function applyEventEffect(card: Card, grid: Map<string, HexTile>): void {
   if (card.id === 'good-rain-year') {
     grid.forEach(tile => {
-      tile.moisture = clamp(tile.moisture + 1, 1, 5);
+      tile.moisture = clamp(tile.moisture + 1, 0, 5);
     });
   } else if (card.id === 'soil-crust-event') {
     grid.forEach(tile => {

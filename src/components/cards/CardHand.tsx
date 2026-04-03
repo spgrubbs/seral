@@ -86,7 +86,20 @@ export default function CardHand({
                 <span className="bg-purple-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">free</span>
               )}
             </div>
-            <div className="text-slate-400 text-[10px] leading-tight line-clamp-3">{card.description}</div>
+            <div className="text-slate-400 text-[10px] leading-tight line-clamp-2">{card.description}</div>
+            {card.type === 'species' && (
+              <div className="text-cyan-400/70 text-[9px] mt-0.5 leading-tight">
+                {card.placement.minMoisture !== undefined && card.placement.maxMoisture !== undefined
+                  ? `M:${card.placement.minMoisture}-${card.placement.maxMoisture} `
+                  : card.placement.minMoisture !== undefined ? `M:${card.placement.minMoisture}+ ` : ''}
+                {card.placement.minLight !== undefined && card.placement.maxLight !== undefined
+                  ? `L:${card.placement.minLight}-${card.placement.maxLight} `
+                  : card.placement.minLight !== undefined ? `L:${card.placement.minLight}+ ` : ''}
+                {card.placement.minNutrients !== undefined ? `N:${card.placement.minNutrients}+ ` : ''}
+                {card.placement.hexType ? card.placement.hexType.join('/') : ''}
+                {card.placement.adjacentTag ? `adj:${card.placement.adjacentTag}` : ''}
+              </div>
+            )}
             {(card.incomePerTurn.biomass > 0 || card.incomePerTurn.nutrients > 0 || card.incomePerTurn.water > 0) && (
               <div className="text-emerald-400 text-[10px] mt-1 font-medium">
                 {card.incomePerTurn.biomass > 0 && `+${card.incomePerTurn.biomass}B `}

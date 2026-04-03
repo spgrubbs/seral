@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { RunState, HexCoord, hexKey, Card } from '@/game/types';
 import { getValidPlacements } from '@/game/hex';
-import { playCard, endTurn, drawCards } from '@/game/state';
+import { playCard, endTurn, calculateProjectedIncome } from '@/game/state';
 import HexGrid from '@/components/hex/HexGrid';
 import CardHand from '@/components/cards/CardHand';
 
@@ -15,33 +15,103 @@ interface RunScreenProps {
   onEndRun: () => void;
 }
 
-function ResourceBar({ resources, turn, endTurnCost }: {
+function ResourceBar({ resources, turn, endTurnCost, run }: {
   resources: { biomass: number; nutrients: number; water: number };
   turn: number;
   endTurnCost: number;
+  run: RunState;
 }) {
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const projected = calculateProjectedIncome(run);
+
+  function formatNet(val: number): string {
+    if (val > 0) return `+${val}`;
+    if (val < 0) return `${val}`;
+    return '0';
+  }
+
+  function netColor(val: number): string {
+    if (val > 0) return 'text-emerald-400';
+    if (val < 0) return 'text-red-400';
+    return 'text-slate-500';
+  }
+
   return (
-    <div className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs">
-      <div className="flex gap-3">
-        <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
-          <span className="text-green-400 font-bold">{resources.biomass}</span>
-          <span className="text-slate-500">B</span>
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-          <span className="text-amber-400 font-bold">{resources.nutrients}</span>
-          <span className="text-slate-500">N</span>
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-          <span className="text-blue-400 font-bold">{resources.water}</span>
-          <span className="text-slate-500">W</span>
-        </span>
+    <div
+      className="relative px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs cursor-pointer"
+      onClick={() => setShowBreakdown(!showBreakdown)}
+      onMouseEnter={() => setShowBreakdown(true)}
+      onMouseLeave={() => setShowBreakdown(false)}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex gap-3">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+            <span className="text-green-400 font-bold">{resources.biomass}</span>
+            <span className={`${netColor(projected.total.biomass)} text-[10px]`}>
+              ({formatNet(projected.total.biomass)})
+            </span>
+            <span className="text-slate-500">B</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+            <span className="text-amber-400 font-bold">{resources.nutrients}</span>
+            <span className={`${netColor(projected.total.nutrients)} text-[10px]`}>
+              ({formatNet(projected.total.nutrients)})
+            </span>
+            <span className="text-slate-500">N</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+            <span className="text-blue-400 font-bold">{resources.water}</span>
+            <span className={`${netColor(projected.total.water)} text-[10px]`}>
+              ({formatNet(projected.total.water)})
+            </span>
+            <span className="text-slate-500">W</span>
+          </span>
+        </div>
+        <div className="text-slate-400">
+          Year <span className="text-white font-bold">{turn}</span>
+        </div>
       </div>
-      <div className="text-slate-400">
-        Year <span className="text-white font-bold">{turn}</span>
-      </div>
+
+      {/* Breakdown tooltip */}
+      {showBreakdown && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-slate-900 border border-slate-700 rounded-b-lg p-3 text-[10px] shadow-xl animate-fade-in">
+          <div className="font-semibold text-slate-300 mb-1.5">Next Turn Income Breakdown</div>
+          <div className="grid grid-cols-4 gap-x-3 gap-y-1">
+            <div className="text-slate-500">Source</div>
+            <div className="text-green-400">Biomass</div>
+            <div className="text-amber-400">Nutrients</div>
+            <div className="text-blue-400">Water</div>
+
+            <div className="text-slate-400">Card income</div>
+            <div className="text-green-300">+{projected.cardIncome.biomass}</div>
+            <div className="text-amber-300">+{projected.cardIncome.nutrients}</div>
+            <div className="text-blue-300">+{projected.cardIncome.water}</div>
+
+            <div className="text-slate-400">Adjacency</div>
+            <div className="text-green-300">+{projected.adjacency.biomass}</div>
+            <div className="text-amber-300">+{projected.adjacency.nutrients}</div>
+            <div className="text-slate-600">-</div>
+
+            <div className="text-slate-400">Water hexes</div>
+            <div className="text-slate-600">-</div>
+            <div className="text-slate-600">-</div>
+            <div className="text-blue-300">+{projected.waterHexes}</div>
+
+            <div className="text-slate-400">End turn cost</div>
+            <div className="text-red-400">-{projected.endTurnCost}</div>
+            <div className="text-slate-600">-</div>
+            <div className="text-slate-600">-</div>
+
+            <div className="text-white font-bold border-t border-slate-700 pt-1">Net</div>
+            <div className={`font-bold border-t border-slate-700 pt-1 ${netColor(projected.total.biomass)}`}>{formatNet(projected.total.biomass)}</div>
+            <div className={`font-bold border-t border-slate-700 pt-1 ${netColor(projected.total.nutrients)}`}>{formatNet(projected.total.nutrients)}</div>
+            <div className={`font-bold border-t border-slate-700 pt-1 ${netColor(projected.total.water)}`}>{formatNet(projected.total.water)}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -58,15 +128,19 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
     return new Set(valid.map(c => hexKey(c)));
   }, [selectedCard, run.hexGrid]);
 
+  const canAffordEndTurn = run.resources.biomass >= run.endTurnCost;
+
+  // Determine end-turn button state
+  const shouldEndRun = run.cardsPlayedThisTurn === 0 || !canAffordEndTurn;
+
   const handleSelectCard = useCallback((idx: number) => {
     const newRun = { ...run };
     if (newRun.selectedCardIndex === idx) {
-      // Deselect or play event
       const card = newRun.hand[idx];
       if (card.type === 'event') {
         const result = playCard(newRun, idx, null);
         if (result.success) {
-          setMessage(`Played ${card.name}!`);
+          setMessage(`Played ${result.cardName}!`);
           setTimeout(() => setMessage(null), 1500);
         } else {
           setMessage(result.message || 'Cannot play');
@@ -89,9 +163,8 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
     const result = playCard(newRun, run.selectedCardIndex, key);
 
     if (result.success) {
-      const cardName = run.hand[run.selectedCardIndex].name;
       newRun.selectedCardIndex = null;
-      setMessage(`Placed ${cardName}!`);
+      setMessage(`Placed ${result.cardName}!`);
       setTimeout(() => setMessage(null), 1500);
     } else {
       setMessage(result.message || 'Cannot place here');
@@ -102,14 +175,8 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
   }, [run, onUpdate]);
 
   const handleEndTurn = useCallback(() => {
-    if (run.cardsPlayedThisTurn === 0) {
+    if (shouldEndRun) {
       setShowEndConfirm(true);
-      return;
-    }
-
-    if (run.resources.biomass < run.endTurnCost) {
-      setMessage('Not enough biomass to end turn!');
-      setTimeout(() => setMessage(null), 1500);
       return;
     }
 
@@ -118,7 +185,7 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
     onUpdate(newRun);
     setMessage(`Year ${newRun.turn} begins`);
     setTimeout(() => setMessage(null), 1500);
-  }, [run, onUpdate]);
+  }, [run, onUpdate, shouldEndRun]);
 
   const handleConfirmEndRun = useCallback(() => {
     setShowEndConfirm(false);
@@ -127,7 +194,7 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
 
   // Count placed cards
   let population = 0;
-  let diversity = new Set<string>();
+  const diversity = new Set<string>();
   run.hexGrid.forEach(tile => {
     if (tile.placedCard) {
       population++;
@@ -145,11 +212,12 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
         <div className="text-[10px] text-slate-500 flex gap-3">
           <span>{population} placed</span>
           <span>{diversity.size} species</span>
+          <span>{run.totalActions} actions</span>
         </div>
       </div>
 
       {/* Resource Bar */}
-      <ResourceBar resources={run.resources} turn={run.turn} endTurnCost={run.endTurnCost} />
+      <ResourceBar resources={run.resources} turn={run.turn} endTurnCost={run.endTurnCost} run={run} />
 
       {/* Quest banner */}
       <div className="px-3 py-1 bg-amber-900/20 text-amber-300 text-[10px] text-center">
@@ -169,7 +237,7 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
 
       {/* Message toast */}
       {message && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-800 border border-slate-600 px-4 py-2 rounded-lg text-sm font-semibold shadow-xl z-50 animate-fade-in">
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-800 border border-slate-600 px-4 py-2 rounded-lg text-sm font-semibold shadow-xl z-50 animate-fade-in">
           {message}
         </div>
       )}
@@ -180,7 +248,10 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
           <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 mx-4 max-w-sm">
             <h3 className="text-lg font-bold mb-2">End Run?</h3>
             <p className="text-slate-400 text-sm mb-4">
-              You haven&apos;t played any cards this turn. Ending the turn without playing will end the run.
+              {!canAffordEndTurn
+                ? `You don't have enough biomass (${run.endTurnCost}B needed) to continue. The run will end.`
+                : "You haven't played any cards this turn. Ending will conclude the run."
+              }
             </p>
             <div className="flex gap-3">
               <button
@@ -215,12 +286,12 @@ export default function RunScreen({ run, regionName, questDescription, onUpdate,
         <button
           onClick={handleEndTurn}
           className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors ${
-            run.cardsPlayedThisTurn === 0
+            shouldEndRun
               ? 'bg-red-700 hover:bg-red-600 text-white'
               : 'bg-emerald-600 hover:bg-emerald-500 text-white'
           }`}
         >
-          {run.cardsPlayedThisTurn === 0
+          {shouldEndRun
             ? 'End Run'
             : `End Turn (${run.endTurnCost}B)`
           }

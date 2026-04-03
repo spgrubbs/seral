@@ -2,7 +2,7 @@ import {
   GameState, RunState, RunScore, Resources, Card, HexTile,
   hexKey, Region,
 } from './types';
-import { generateHexGrid, applyAbioticEffect, applyEventEffect, processPropagation, calculateAdjacencyBonuses, getValidPlacements } from './hex';
+import { generateHexGrid, applyAbioticEffect, applyEventEffect, processPropagation, calculateAdjacencyBonuses, getValidPlacements, canPlaceCard } from './hex';
 import { getStarterDeck, getCardById } from './cards';
 
 // ============================================================
@@ -65,6 +65,7 @@ export function startRun(region: Region, deck: Card[]): RunState {
     turn: 1,
     endTurnCost: 1,
     cardsPlayedThisTurn: 0,
+    totalActions: 0,
     score: emptyScore(),
     phase: 'playing',
     selectedCardIndex: null,
@@ -75,7 +76,7 @@ export function startRun(region: Region, deck: Card[]): RunState {
 function emptyScore(): RunScore {
   return {
     resourcesNet: 0, peakIncome: 0, diversity: 0, population: 0,
-    turns: 0, objectiveBonus: 0, questBonus: 0, synergyBonus: 0, total: 0,
+    actions: 0, turns: 0, objectiveBonus: 0, questBonus: 0, synergyBonus: 0, total: 0,
   };
 }
 
@@ -96,7 +97,7 @@ export function playCard(
   run: RunState,
   handIndex: number,
   targetHexKey: string | null,
-): { success: boolean; message?: string } {
+): { success: boolean; message?: string; cardName?: string } {
   const card = run.hand[handIndex];
   if (!card) return { success: false, message: 'No card at that index' };
 
@@ -116,6 +117,7 @@ export function playCard(
     run.hand.splice(handIndex, 1);
     run.discard.push(card);
     run.cardsPlayedThisTurn++;
+    run.totalActions++;
 
     // Chain draw
     if (card.chainDraw) {
@@ -126,7 +128,7 @@ export function playCard(
     if (card.id === 'good-rain-year') {
       drawCards(run, 1);
     }
-    return { success: true };
+    return { success: true, cardName: card.name };
   }
 
   // Need a target hex for species/abiotic
@@ -134,6 +136,14 @@ export function playCard(
 
   const tile = run.hexGrid.get(targetHexKey);
   if (!tile) return { success: false, message: 'Invalid hex' };
+
+  // Validate placement
+  if (!canPlaceCard(card, tile, run.hexGrid)) {
+    return { success: false, message: 'Cannot place here — conditions not met' };
+  }
+
+  // Capture card name before splicing
+  const cardName = card.name;
 
   // Pay cost
   run.resources.biomass -= card.cost.biomass;
@@ -149,6 +159,7 @@ export function playCard(
   run.hand.splice(handIndex, 1);
   run.discard.push(card);
   run.cardsPlayedThisTurn++;
+  run.totalActions++;
 
   // Chain draw
   if (card.chainDraw) {
@@ -156,7 +167,7 @@ export function playCard(
     if (chainCard) run.hand.push({ ...chainCard });
   }
 
-  return { success: true };
+  return { success: true, cardName };
 }
 
 export function endTurn(run: RunState): void {
@@ -235,7 +246,8 @@ export function calculateScore(run: RunState, region: Region): RunScore {
     peakIncome: totalBiomassGenerated,
     diversity: diversity * 10,
     population: population * 5,
-    turns: run.turn * 3,
+    actions: run.totalActions * 3,
+    turns: (run.turn - 1) * 5, // turn starts at 1, so subtract 1 for actual turns completed
     objectiveBonus,
     questBonus,
     synergyBonus: Math.floor(totalBiomassGenerated * 0.2),
@@ -243,10 +255,48 @@ export function calculateScore(run: RunState, region: Region): RunScore {
   };
 
   score.total = score.resourcesNet + score.peakIncome + score.diversity +
-    score.population + score.turns + score.objectiveBonus +
+    score.population + score.actions + score.turns + score.objectiveBonus +
     score.questBonus + score.synergyBonus;
 
   return score;
+}
+
+/** Calculate projected income for the next end-turn, broken down by source */
+export function calculateProjectedIncome(run: RunState): {
+  total: { biomass: number; nutrients: number; water: number };
+  cardIncome: { biomass: number; nutrients: number; water: number };
+  adjacency: { biomass: number; nutrients: number };
+  waterHexes: number;
+  endTurnCost: number;
+} {
+  const cardIncome = { biomass: 0, nutrients: 0, water: 0 };
+  run.hexGrid.forEach((tile) => {
+    if (!tile.placedCard) return;
+    const pc = tile.placedCard;
+    cardIncome.biomass += pc.card.incomePerTurn.biomass;
+    cardIncome.nutrients += pc.card.incomePerTurn.nutrients;
+    cardIncome.water += pc.card.incomePerTurn.water;
+    if (pc.card.maintenanceCost) {
+      cardIncome.biomass -= pc.card.maintenanceCost.biomass;
+      cardIncome.nutrients -= pc.card.maintenanceCost.nutrients;
+      cardIncome.water -= pc.card.maintenanceCost.water;
+    }
+  });
+
+  const adjacency = calculateAdjacencyBonuses(run.hexGrid);
+
+  let waterHexes = 0;
+  run.hexGrid.forEach((tile) => {
+    if (tile.type === 'water' && !tile.placedCard) waterHexes++;
+  });
+
+  const total = {
+    biomass: cardIncome.biomass + adjacency.biomass - run.endTurnCost,
+    nutrients: cardIncome.nutrients + adjacency.nutrients,
+    water: cardIncome.water + waterHexes,
+  };
+
+  return { total, cardIncome, adjacency, waterHexes, endTurnCost: run.endTurnCost };
 }
 
 export function getEstablishCandidates(run: RunState): Card[] {
