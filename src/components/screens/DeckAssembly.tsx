@@ -2,21 +2,32 @@
 
 import React, { useState, useMemo } from 'react';
 import { Card, Region } from '@/game/types';
-import { ALL_CARDS } from '@/game/cards';
+import { ALL_CARDS, EVENT_CARDS, ABIOTIC_CARDS } from '@/game/cards';
+import { getEventCardsForCondition, LOCAL_CONDITION_DESCRIPTIONS } from '@/game/planet';
 
 interface DeckAssemblyProps {
   region: Region;
   unlockedCardIds: string[];
+  unlockedAbioticIds: string[];
   suggestedDeck: Card[];
   onStartRun: (deck: Card[]) => void;
   onBack: () => void;
 }
 
-const MAX_DECK_SIZE = 20;
+const MAX_DECK_SIZE = 15;
 
-export default function DeckAssembly({ region, unlockedCardIds, suggestedDeck, onStartRun, onBack }: DeckAssemblyProps) {
+export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticIds, suggestedDeck, onStartRun, onBack }: DeckAssemblyProps) {
   const [deck, setDeck] = useState<Card[]>(suggestedDeck);
   const [filter, setFilter] = useState<string>('all');
+
+  // Auto-added event cards for this region's condition
+  const mandatoryEventIds = getEventCardsForCondition(region.localCondition);
+  const mandatoryEvents = mandatoryEventIds
+    .map(id => EVENT_CARDS.find(c => c.id === id))
+    .filter((c): c is Card => !!c);
+
+  // Available abiotic cards (purchased ones)
+  const availableAbiotics = ABIOTIC_CARDS.filter(c => unlockedAbioticIds.includes(c.id));
 
   const availableCards = useMemo(() =>
     ALL_CARDS.filter(c => unlockedCardIds.includes(c.id)),
@@ -24,14 +35,13 @@ export default function DeckAssembly({ region, unlockedCardIds, suggestedDeck, o
   );
 
   const filteredCards = useMemo(() => {
-    if (filter === 'all') return availableCards;
-    if (filter === 'species') return availableCards.filter(c => c.type === 'species');
-    if (filter === 'abiotic') return availableCards.filter(c => c.type === 'abiotic');
-    if (filter === 'event') return availableCards.filter(c => c.type === 'event');
-    if (filter === 'pioneer') return availableCards.filter(c => c.successionStage === 'pioneer');
-    if (filter === 'grassland') return availableCards.filter(c => c.successionStage === 'grassland');
-    if (filter === 'woodland') return availableCards.filter(c => c.successionStage === 'woodland');
-    return availableCards;
+    let cards = availableCards;
+    if (filter === 'species') cards = cards.filter(c => c.type === 'species');
+    if (filter === 'pioneer') cards = cards.filter(c => c.successionStage === 'pioneer');
+    if (filter === 'grassland') cards = cards.filter(c => c.successionStage === 'grassland');
+    if (filter === 'woodland') cards = cards.filter(c => c.successionStage === 'woodland');
+    if (filter === 'climax') cards = cards.filter(c => c.successionStage === 'climax');
+    return cards;
   }, [availableCards, filter]);
 
   const addCard = (card: Card) => {
@@ -49,27 +59,43 @@ export default function DeckAssembly({ region, unlockedCardIds, suggestedDeck, o
     return counts;
   }, [deck]);
 
+  const totalCards = deck.length + mandatoryEvents.length + availableAbiotics.length;
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-950 text-white">
       {/* Header */}
       <div className="px-4 py-3 bg-slate-900 border-b border-slate-800">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-1">
           <button onClick={onBack} className="text-slate-400 hover:text-white text-sm">&larr; Map</button>
-          <span className="text-emerald-400 font-bold">{deck.length}/{MAX_DECK_SIZE}</span>
+          <span className="text-emerald-400 font-bold text-sm">{deck.length}/{MAX_DECK_SIZE} species</span>
         </div>
-        <h2 className="text-base font-bold">{region.name} — Deck Assembly</h2>
+        <h2 className="text-base font-bold">{region.name}</h2>
         <div className="flex gap-2 text-[10px] text-slate-400 mt-1">
-          <span>Target: <span className="text-emerald-400 capitalize">{region.targetStage}</span></span>
-          <span>|</span>
           <span>Size: <span className="text-white capitalize">{region.mapSize}</span></span>
           <span>|</span>
-          <span className="text-amber-300">{region.questDescription}</span>
+          <span>Condition: <span className="text-cyan-300 capitalize">{region.localCondition.replace('-', ' ')}</span></span>
         </div>
+        <div className="text-[10px] text-amber-300 mt-1">{region.quest.description}</div>
       </div>
 
-      {/* Current Deck (collapsible) */}
-      <div className="px-4 py-2 bg-slate-900/50 border-b border-slate-800">
-        <div className="text-xs text-slate-400 mb-1">Your Deck ({deck.length})</div>
+      {/* Deck visualization: top half */}
+      <div className="px-4 py-3 bg-slate-900/50 border-b border-slate-800">
+        {/* Card backs visualization */}
+        <div className="flex items-center gap-2 mb-2">
+          <div className="flex -space-x-2">
+            {deck.slice(0, 12).map((_, i) => (
+              <div key={i} className="w-5 h-7 rounded-sm bg-gradient-to-br from-emerald-700 to-emerald-900 border border-emerald-600/50" />
+            ))}
+            {deck.length > 12 && (
+              <div className="w-5 h-7 rounded-sm bg-emerald-800 border border-emerald-600/50 flex items-center justify-center text-[7px] text-emerald-300">
+                +{deck.length - 12}
+              </div>
+            )}
+          </div>
+          <span className="text-slate-500 text-[10px]">{totalCards} total in deck</span>
+        </div>
+
+        {/* Card name list */}
         <div className="flex flex-wrap gap-1">
           {Array.from(deckCounts.entries()).map(([cardId, count]) => {
             const card = deck.find(c => c.id === cardId)!;
@@ -86,12 +112,24 @@ export default function DeckAssembly({ region, unlockedCardIds, suggestedDeck, o
               </button>
             );
           })}
+          {/* Mandatory events */}
+          {mandatoryEvents.map((card, i) => (
+            <span key={`evt-${i}`} className="text-[10px] bg-purple-900/30 px-2 py-0.5 rounded border border-purple-700/50 text-purple-300">
+              {card.name} <span className="text-purple-500">(auto)</span>
+            </span>
+          ))}
+          {/* Available abiotics */}
+          {availableAbiotics.map(card => (
+            <span key={card.id} className="text-[10px] bg-stone-800/50 px-2 py-0.5 rounded border border-stone-600/50 text-stone-300">
+              {card.name} <span className="text-stone-500">(tool)</span>
+            </span>
+          ))}
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex gap-1 px-4 py-2 overflow-x-auto text-[10px]">
-        {['all', 'species', 'abiotic', 'event', 'pioneer', 'grassland', 'woodland'].map(f => (
+        {['all', 'species', 'pioneer', 'grassland', 'woodland', 'climax'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -121,32 +159,26 @@ export default function DeckAssembly({ region, unlockedCardIds, suggestedDeck, o
                 `}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase
-                    ${card.type === 'species' ? 'bg-emerald-700 text-white' :
-                      card.type === 'abiotic' ? 'bg-stone-600 text-white' : 'bg-purple-600 text-white'}`
-                  }>
-                    {card.type}
+                  <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase bg-emerald-700 text-white">
+                    {card.successionStage || card.type}
                   </span>
-                  {inDeck > 0 && (
-                    <span className="text-[9px] text-emerald-400 font-bold">x{inDeck}</span>
-                  )}
+                  {inDeck > 0 && <span className="text-[9px] text-emerald-400 font-bold">x{inDeck}</span>}
                 </div>
                 <div className="text-xs font-semibold mb-1">{card.name}</div>
+                {/* Cost pills — no letters, colored only */}
                 <div className="flex gap-1 flex-wrap mb-1">
-                  {card.cost.biomass > 0 && (
-                    <span className="bg-green-600 text-white text-[9px] px-1 py-0 rounded-full">{card.cost.biomass}B</span>
-                  )}
-                  {card.cost.nutrients > 0 && (
-                    <span className="bg-amber-600 text-white text-[9px] px-1 py-0 rounded-full">{card.cost.nutrients}N</span>
-                  )}
-                  {card.cost.water > 0 && (
-                    <span className="bg-blue-500 text-white text-[9px] px-1 py-0 rounded-full">{card.cost.water}W</span>
-                  )}
-                  {card.type === 'event' && (
-                    <span className="bg-purple-500 text-white text-[9px] px-1 py-0 rounded-full">free</span>
-                  )}
+                  {card.cost.biomass > 0 && <span className="bg-green-600 text-white text-[9px] w-5 h-4 flex items-center justify-center rounded-full font-bold">{card.cost.biomass}</span>}
+                  {card.cost.nutrients > 0 && <span className="bg-amber-600 text-white text-[9px] w-5 h-4 flex items-center justify-center rounded-full font-bold">{card.cost.nutrients}</span>}
+                  {card.cost.water > 0 && <span className="bg-blue-500 text-white text-[9px] w-5 h-4 flex items-center justify-center rounded-full font-bold">{card.cost.water}</span>}
                 </div>
-                <div className="text-slate-500 text-[9px] leading-tight line-clamp-2">{card.description}</div>
+                {/* Requirements */}
+                <div className="text-cyan-400/60 text-[8px] mb-0.5">
+                  {card.placement.minMoisture !== undefined && `M:${card.placement.minMoisture}-${card.placement.maxMoisture ?? 5} `}
+                  {card.placement.minLight !== undefined && `L:${card.placement.minLight}-${card.placement.maxLight ?? 3} `}
+                  {card.placement.minNutrients !== undefined && `N:${card.placement.minNutrients}+ `}
+                  {card.placement.hexType && card.placement.hexType.join('/')}
+                </div>
+                <div className="text-slate-500 text-[9px] leading-tight italic line-clamp-2">{card.flavorText || card.description}</div>
               </button>
             );
           })}
@@ -160,7 +192,7 @@ export default function DeckAssembly({ region, unlockedCardIds, suggestedDeck, o
           disabled={deck.length < 5}
           className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-bold text-lg transition-colors"
         >
-          Start Run ({deck.length} cards)
+          Start Run ({totalCards} cards)
         </button>
       </div>
     </div>
