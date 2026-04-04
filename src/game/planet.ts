@@ -51,18 +51,18 @@ export const LOCAL_CONDITION_DESCRIPTIONS: Record<LocalCondition, string> = {
 
 function makeDefaultAchievements(): Achievement[] {
   return [
-    { id: 'first_run', name: 'First Steps', description: 'Complete your first run.', reward: 10, completed: false, check: 'runs_1' },
-    { id: 'pioneer_3', name: 'Seeding Life', description: 'Advance 3 regions to Pioneer.', reward: 20, completed: false, check: 'regions_pioneer_3' },
-    { id: 'pioneer_8', name: 'Spreading Green', description: 'Advance 8 regions to Pioneer.', reward: 40, completed: false, check: 'regions_pioneer_8' },
-    { id: 'grassland_3', name: 'Grassland Frontier', description: 'Advance 3 regions to Grassland.', reward: 50, completed: false, check: 'regions_grassland_3' },
-    { id: 'grassland_8', name: 'Prairie Dominion', description: 'Advance 8 regions to Grassland.', reward: 80, completed: false, check: 'regions_grassland_8' },
-    { id: 'woodland_3', name: 'Forest Dawn', description: 'Advance 3 regions to Woodland.', reward: 100, completed: false, check: 'regions_woodland_3' },
-    { id: 'climax_1', name: 'Climax Community', description: 'Advance 1 region to Climax.', reward: 150, completed: false, check: 'regions_climax_1' },
-    { id: 'climax_5', name: 'Flourishing World', description: 'Advance 5 regions to Climax.', reward: 300, completed: false, check: 'regions_climax_5' },
-    { id: 'diversity_10', name: 'Biodiversity', description: 'Have 10+ species in a single run.', reward: 60, completed: false, check: 'diversity_10' },
-    { id: 'score_200', name: 'Productive Ecosystem', description: 'Score 200+ in a single run.', reward: 30, completed: false, check: 'score_200' },
-    { id: 'score_500', name: 'Thriving Planet', description: 'Score 500+ in a single run.', reward: 80, completed: false, check: 'score_500' },
-    { id: 'runs_10', name: 'Persistent Ecologist', description: 'Complete 10 runs.', reward: 40, completed: false, check: 'runs_10' },
+    { id: 'first_run', name: 'First Steps', description: 'Complete your first run.', reward: 100, completed: false, check: 'runs_1' },
+    { id: 'pioneer_3', name: 'Seeding Life', description: 'Advance 3 regions to Pioneer.', reward: 200, completed: false, check: 'regions_pioneer_3' },
+    { id: 'pioneer_8', name: 'Spreading Green', description: 'Advance 8 regions to Pioneer.', reward: 400, completed: false, check: 'regions_pioneer_8' },
+    { id: 'grassland_3', name: 'Grassland Frontier', description: 'Advance 3 regions to Grassland.', reward: 500, completed: false, check: 'regions_grassland_3' },
+    { id: 'grassland_8', name: 'Prairie Dominion', description: 'Advance 8 regions to Grassland.', reward: 800, completed: false, check: 'regions_grassland_8' },
+    { id: 'woodland_3', name: 'Forest Dawn', description: 'Advance 3 regions to Woodland.', reward: 1000, completed: false, check: 'regions_woodland_3' },
+    { id: 'climax_1', name: 'Climax Community', description: 'Advance 1 region to Climax.', reward: 1500, completed: false, check: 'regions_climax_1' },
+    { id: 'climax_5', name: 'Flourishing World', description: 'Advance 5 regions to Climax.', reward: 3000, completed: false, check: 'regions_climax_5' },
+    { id: 'diversity_10', name: 'Biodiversity', description: 'Have 10+ species in a single run.', reward: 600, completed: false, check: 'diversity_10' },
+    { id: 'score_200', name: 'Productive Ecosystem', description: 'Score 200+ in a single run.', reward: 300, completed: false, check: 'score_200' },
+    { id: 'score_500', name: 'Thriving Planet', description: 'Score 500+ in a single run.', reward: 800, completed: false, check: 'score_500' },
+    { id: 'runs_10', name: 'Persistent Ecologist', description: 'Complete 10 runs.', reward: 400, completed: false, check: 'runs_10' },
   ];
 }
 

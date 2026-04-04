@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Card } from '@/game/types';
 
 interface CardHandProps {
@@ -156,6 +156,18 @@ export default function CardHand({
   endTurnCost,
 }: CardHandProps) {
   const [modalCard, setModalCard] = useState<Card | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMouseEnterCard = useCallback((card: Card) => {
+    hoverTimerRef.current = setTimeout(() => setModalCard(card), 500);
+  }, []);
+
+  const handleMouseLeaveCard = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, []);
 
   return (
     <>
@@ -181,6 +193,8 @@ export default function CardHand({
               onClick={() => onSelectCard(idx)}
               onContextMenu={(e) => { e.preventDefault(); setModalCard(card); }}
               onDoubleClick={() => setModalCard(card)}
+              onMouseEnter={() => handleMouseEnterCard(card)}
+              onMouseLeave={handleMouseLeaveCard}
               className={`
                 snap-center flex-shrink-0 w-[130px] rounded-lg border-2 p-2 text-left transition-all
                 ${isSelected

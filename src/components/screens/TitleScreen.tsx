@@ -23,19 +23,17 @@ export default function TitleScreen({ onNewPlanet, hasSave, onContinue }: TitleS
         <p className="text-slate-400 text-sm tracking-widest uppercase">Ecological Succession</p>
       </div>
 
-      {/* Dictionary definition */}
-      <div className="mb-8 max-w-xs text-center">
-        <div className="bg-slate-900/40 border border-slate-800 rounded-lg px-5 py-3">
-          <div className="flex items-baseline gap-2 justify-center mb-1">
-            <span className="text-emerald-400 font-semibold italic" style={{ fontFamily: 'Georgia, serif' }}>ser·al</span>
-            <span className="text-slate-500 text-[10px]">/ˈsɪərəl/</span>
-            <span className="text-slate-600 text-[10px] italic">adj.</span>
-          </div>
-          <p className="text-slate-400 text-xs leading-relaxed">
-            Of or relating to a <span className="text-slate-300">sere</span> — a sequence of ecological communities
-            successively occupying an area from the initial barren stage to the stable climax community.
-          </p>
+      {/* Dictionary definition — stylized inline text */}
+      <div className="mb-8 max-w-xs text-center px-4">
+        <div className="flex items-baseline gap-2 justify-center mb-1">
+          <span className="text-emerald-400/60 font-semibold italic text-sm" style={{ fontFamily: 'Georgia, serif' }}>ser·al</span>
+          <span className="text-slate-600 text-[10px]">/ˈsɪərəl/</span>
+          <span className="text-slate-700 text-[10px] italic">adj.</span>
         </div>
+        <p className="text-slate-500 text-xs leading-relaxed italic" style={{ fontFamily: 'Georgia, serif' }}>
+          Of or relating to a <span className="text-slate-400">sere</span> — a sequence of ecological communities
+          successively occupying an area from the initial barren stage to the stable climax community.
+        </p>
       </div>
 
       {/* Decorative hex pattern */}

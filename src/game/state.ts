@@ -1,8 +1,8 @@
 import {
   GameState, RunState, RunScore, Resources, Card, HexTile,
-  hexKey, Region, PlanetUpgrades, Quest,
+  hexKey, Region, PlanetUpgrades, PlanetStats, Quest,
 } from './types';
-import { generateHexGrid, applyAbioticEffect, applyEventEffect, processPropagation, calculateAdjacencyBonuses, getValidPlacements, canPlaceCard } from './hex';
+import { generateHexGrid, applyAbioticEffect, applyEventEffect, processPropagation, calculateAdjacencyBonuses, getValidPlacements, canPlaceCard, hexDistance } from './hex';
 import { getStarterDeck, getAnyCardById, EVENT_CARDS } from './cards';
 import { getEventCardsForCondition } from './planet';
 
@@ -29,12 +29,15 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export function startRun(region: Region, deck: Card[], upgrades?: PlanetUpgrades): RunState {
+export function startRun(region: Region, deck: Card[], upgrades?: PlanetUpgrades, planetStats?: PlanetStats): RunState {
   const sizeMap = { small: 3, medium: 4, large: 5 };
   const radius = sizeMap[region.mapSize];
+
+  // Apply global planet stat bonuses to base conditions
+  const moistureBonus = planetStats ? Math.max(0, planetStats.hydrologicalActivity - 1) : 0;
   const grid = generateHexGrid(
     radius,
-    region.baseMoisture,
+    region.baseMoisture + moistureBonus,
     region.baseLight,
     region.baseNutrients,
     Date.now(),
@@ -42,10 +45,19 @@ export function startRun(region: Region, deck: Card[], upgrades?: PlanetUpgrades
   );
 
   // Place seed bank cards on valid hexes
+  // Ecological drift: spread seeds further from center (up to ecologicalDrift + 1 hexes away)
+  const driftRange = (upgrades?.ecologicalDrift || 0) + 1;
+  const center = { q: 0, r: 0 };
   for (const card of region.seedBank) {
     const valid = getValidPlacements(card, grid);
-    if (valid.length > 0) {
-      const coord = valid[Math.floor(Math.random() * valid.length)];
+    // Prefer hexes at increasing distance from center based on drift level
+    const candidates = valid.filter(c => {
+      const dist = hexDistance(c, center);
+      return dist <= driftRange;
+    });
+    const placementPool = candidates.length > 0 ? candidates : valid;
+    if (placementPool.length > 0) {
+      const coord = placementPool[Math.floor(Math.random() * placementPool.length)];
       const tile = grid.get(hexKey(coord));
       if (tile && !tile.placedCard) {
         tile.placedCard = { card: { ...card }, turnsActive: 0, biomassGenerated: 0 };
@@ -65,7 +77,8 @@ export function startRun(region: Region, deck: Card[], upgrades?: PlanetUpgrades
   const hand = shuffled.slice(0, 5);
   const remaining = shuffled.slice(5);
 
-  const startingBiomass = 8 + (upgrades?.startingBiomassBonus || 0);
+  const thermalBonus = planetStats ? Math.floor((planetStats.thermalBalance - 1) / 2) : 0;
+  const startingBiomass = 5 + (upgrades?.startingBiomassBonus || 0) + thermalBonus;
 
   return {
     regionId: region.id,
@@ -73,7 +86,7 @@ export function startRun(region: Region, deck: Card[], upgrades?: PlanetUpgrades
     deck: remaining,
     hand,
     discard: [],
-    resources: { biomass: startingBiomass, nutrients: 4, water: 4 },
+    resources: { biomass: startingBiomass, nutrients: 2, water: 2 },
     turn: 1,
     endTurnCost: 1,
     cardsPlayedThisTurn: 0,
@@ -177,7 +190,7 @@ export function playCard(
   return { success: true, cardName };
 }
 
-export function endTurn(run: RunState, freeTurnEnds: number = 0): void {
+export function endTurn(run: RunState, freeTurnEnds: number = 0, o2BonusBiomass: number = 0): void {
   // Pay end turn cost (free if within freeTurnEnds)
   const actualCost = run.turn <= freeTurnEnds ? 0 : run.endTurnCost;
   run.resources.biomass -= actualCost;
@@ -210,6 +223,9 @@ export function endTurn(run: RunState, freeTurnEnds: number = 0): void {
   run.hexGrid.forEach((tile) => {
     if (tile.type === 'water' && !tile.placedCard) turnIncome.water += 1;
   });
+
+  // Apply O₂ density bonus to biomass income
+  turnIncome.biomass += o2BonusBiomass;
 
   run.resources.biomass += turnIncome.biomass;
   run.resources.nutrients += turnIncome.nutrients;
@@ -260,6 +276,11 @@ export function calculateScore(run: RunState, quest?: Quest): RunScore {
       case 'place_consumers': met = consumerDecomposerCount >= quest.targetValue; break;
     }
     if (met) questBonus = 30;
+  }
+
+  // No points for quitting on turn 1 without playing
+  if (run.turn <= 1 && run.totalActions === 0) {
+    return emptyScore();
   }
 
   const objectiveBonus = population >= 10 ? 50 : 0;

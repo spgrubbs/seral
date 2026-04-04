@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Planet, Region, RegionState, Achievement } from '@/game/types';
+import { Planet, Region, RegionState, Achievement, PlanetStats } from '@/game/types';
 import { LOCAL_CONDITION_DESCRIPTIONS, CLIMATE_STAT_DESCRIPTIONS } from '@/game/planet';
-import { ABIOTIC_CARDS } from '@/game/cards';
+import { ABIOTIC_CARDS, ALL_CARDS } from '@/game/cards';
 
 interface PlanetMapProps {
   planet: Planet;
@@ -12,6 +12,8 @@ interface PlanetMapProps {
   onBack: () => void;
   onPurchaseUpgrade: (upgradeType: string) => void;
   onPurchaseAbiotic: (cardId: string) => void;
+  onUnlockCard: (cardId: string) => void;
+  cardUnlockCost: number;
 }
 
 const STATE_COLORS: Record<RegionState, string> = {
@@ -65,46 +67,76 @@ function flatHexPoints(cx: number, cy: number, size: number): string {
 }
 
 const UPGRADE_DEFS = [
-  { type: 'freeTurnEnds', name: 'Efficient Metabolism', desc: 'First N turn-ends cost no biomass', maxLevel: 3, costs: [20, 50, 100] },
-  { type: 'startingBiomassBonus', name: 'Biomass Reserves', desc: 'Start runs with +N extra biomass', maxLevel: 3, costs: [15, 40, 80] },
-  { type: 'ecologicalDrift', name: 'Ecological Drift', desc: 'Banked species appear +N hexes away', maxLevel: 2, costs: [30, 70] },
+  { type: 'freeTurnEnds', name: 'Efficient Metabolism', desc: 'First N turn-ends cost no biomass', maxLevel: 3, costs: [300, 600, 1000] },
+  { type: 'startingBiomassBonus', name: 'Biomass Reserves', desc: 'Start runs with +N extra biomass', maxLevel: 3, costs: [200, 400, 800] },
+  { type: 'ecologicalDrift', name: 'Ecological Drift', desc: 'Banked species appear +N hexes away', maxLevel: 2, costs: [500, 1000] },
 ];
 
-export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, onPurchaseUpgrade, onPurchaseAbiotic }: PlanetMapProps) {
+/** Describe how planet stats affect local run conditions */
+function planetStatEffects(stats: PlanetStats): string[] {
+  const effects: string[] = [];
+  if (stats.o2Density >= 2) effects.push(`O₂ Lv.${stats.o2Density}: +${stats.o2Density - 1} biomass income per turn`);
+  if (stats.hydrologicalActivity >= 2) effects.push(`H₂O Lv.${stats.hydrologicalActivity}: +${stats.hydrologicalActivity - 1} base moisture`);
+  if (stats.thermalBalance >= 2) effects.push(`Temp Lv.${stats.thermalBalance}: +${Math.floor((stats.thermalBalance - 1) / 2)} starting biomass`);
+  return effects;
+}
+
+type MenuPanel = null | 'research' | 'cards' | 'achievements' | 'settings';
+
+export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, onPurchaseUpgrade, onPurchaseAbiotic, onUnlockCard, cardUnlockCost }: PlanetMapProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showShop, setShowShop] = useState(false);
+  const [activePanel, setActivePanel] = useState<MenuPanel>(null);
   const selectedRegion = planet.regions.find(r => r.id === selectedId);
 
   const hexSize = 20;
   const cols = 7;
 
-  // Next 3 incomplete achievements
-  const nextAchievements = planet.achievements.filter(a => !a.completed).slice(0, 3);
+  const togglePanel = (panel: MenuPanel) => {
+    setActivePanel(prev => prev === panel ? null : panel);
+  };
+
+  const globalEffects = planetStatEffects(planet.stats);
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-950 text-white">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800">
-        <button onClick={onBack} className="text-slate-400 hover:text-white text-sm">&larr; Menu</button>
-        <div className="text-center">
-          <h1 className="text-lg font-bold text-emerald-400">{planet.name}</h1>
-          <p className="text-[10px] text-slate-500">
-            {planet.runsCompleted} runs | {planet.regions.filter(r => r.state === 'climax').length}/{planet.regions.length} climax
-          </p>
+      {/* Top Menu Bar */}
+      <div className="flex items-center justify-between px-2 py-1.5 bg-slate-900 border-b border-slate-800">
+        <button onClick={onBack} className="text-slate-400 hover:text-white text-xs px-2 py-1">&larr;</button>
+        <div className="text-center flex-1">
+          <h1 className="text-sm font-bold text-emerald-400">{planet.name}</h1>
         </div>
-        <button
-          onClick={() => setShowShop(!showShop)}
-          className="flex items-center gap-1"
-        >
-          <span className="text-amber-400 text-sm font-bold">{planet.researchPoints}</span>
-          <span className="text-slate-500 text-[10px]">RP</span>
-          <span className="text-slate-500 text-[10px]">{showShop ? '▲' : '▼'}</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <span className="text-amber-400 text-xs font-bold mr-1">{planet.researchPoints} RP</span>
+          <button
+            onClick={() => togglePanel('research')}
+            className={`text-[10px] px-2 py-1 rounded ${activePanel === 'research' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+          >
+            Research
+          </button>
+          <button
+            onClick={() => togglePanel('cards')}
+            className={`text-[10px] px-2 py-1 rounded ${activePanel === 'cards' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+          >
+            Cards
+          </button>
+          <button
+            onClick={() => togglePanel('achievements')}
+            className={`text-[10px] px-2 py-1 rounded ${activePanel === 'achievements' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+          >
+            Achieve
+          </button>
+          <button
+            onClick={() => togglePanel('settings')}
+            className={`text-[10px] px-2 py-1 rounded ${activePanel === 'settings' ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+          >
+            Info
+          </button>
+        </div>
       </div>
 
-      {/* Research Shop (toggleable) */}
-      {showShop && (
-        <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 animate-slide-up">
+      {/* Panels */}
+      {activePanel === 'research' && (
+        <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 max-h-[40vh] overflow-auto">
           <h3 className="text-xs font-bold text-amber-400 mb-2">Research Upgrades</h3>
           <div className="flex flex-col gap-2 mb-3">
             {UPGRADE_DEFS.map(upg => {
@@ -131,7 +163,7 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
               );
             })}
           </div>
-          <h3 className="text-xs font-bold text-amber-400 mb-2">Abiotic Tools <span className="text-slate-500 font-normal">(consumable, one-time use per run)</span></h3>
+          <h3 className="text-xs font-bold text-amber-400 mb-2">Abiotic Tools <span className="text-slate-500 font-normal">(consumable)</span></h3>
           <div className="flex flex-col gap-1">
             {ABIOTIC_CARDS.map(card => {
               const owned = planet.upgrades.unlockedAbioticIds.includes(card.id);
@@ -159,22 +191,92 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
         </div>
       )}
 
-      {/* Climate Stats */}
-      <div className="px-4 py-2 bg-slate-900/50 flex flex-col gap-1">
-        <ClimateStat label="O₂" stat="o2Density" value={planet.stats.o2Density} />
-        <ClimateStat label="H₂O" stat="hydrologicalActivity" value={planet.stats.hydrologicalActivity} />
-        <ClimateStat label="Temp" stat="thermalBalance" value={planet.stats.thermalBalance} />
-      </div>
+      {activePanel === 'cards' && (
+        <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 max-h-[40vh] overflow-auto">
+          <h3 className="text-xs font-bold text-emerald-400 mb-2">Unlock Species Cards <span className="text-slate-500 font-normal">({cardUnlockCost} RP each)</span></h3>
+          <div className="grid grid-cols-2 gap-2">
+            {ALL_CARDS.filter(c => c.locked).map(card => {
+              const unlocked = planet.unlockedCardIds.includes(card.id);
+              return (
+                <div key={card.id} className={`rounded px-3 py-2 border ${unlocked ? 'bg-emerald-950/30 border-emerald-700/50' : 'bg-slate-800 border-slate-700'}`}>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-xs font-semibold">{card.name}</span>
+                    <span className="text-[8px] uppercase bg-slate-700 text-slate-400 px-1 py-0.5 rounded">{card.successionStage}</span>
+                  </div>
+                  <div className="text-[9px] text-slate-500 mb-1 italic">{card.flavorText || card.description}</div>
+                  <div className="flex gap-1 mb-1">
+                    {card.cost.biomass > 0 && <span className="bg-green-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{card.cost.biomass}</span>}
+                    {card.cost.nutrients > 0 && <span className="bg-amber-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{card.cost.nutrients}</span>}
+                    {card.cost.water > 0 && <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{card.cost.water}</span>}
+                    {(card.incomePerTurn.biomass > 0 || card.incomePerTurn.nutrients > 0 || card.incomePerTurn.water > 0) && (
+                      <span className="text-emerald-400 text-[8px] ml-1">
+                        {card.incomePerTurn.biomass > 0 && `+${card.incomePerTurn.biomass}B `}
+                        {card.incomePerTurn.nutrients > 0 && `+${card.incomePerTurn.nutrients}N `}
+                        {card.incomePerTurn.water > 0 && `+${card.incomePerTurn.water}W `}
+                        /turn
+                      </span>
+                    )}
+                  </div>
+                  {unlocked ? (
+                    <span className="text-[10px] text-emerald-400 font-bold">Unlocked</span>
+                  ) : (
+                    <button
+                      onClick={() => onUnlockCard(card.id)}
+                      disabled={planet.researchPoints < cardUnlockCost}
+                      className="text-[10px] px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded font-bold w-full"
+                    >
+                      Unlock ({cardUnlockCost} RP)
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      {/* Achievements */}
-      {nextAchievements.length > 0 && (
-        <div className="px-4 py-1.5 bg-slate-900/30 border-b border-slate-800 flex gap-2 overflow-x-auto">
-          {nextAchievements.map(ach => (
-            <div key={ach.id} className="flex-shrink-0 bg-slate-800/50 rounded px-2 py-1 border border-slate-700/50">
-              <div className="text-[10px] text-amber-300 font-semibold">{ach.name}</div>
-              <div className="text-[9px] text-slate-400">{ach.description} <span className="text-amber-400">+{ach.reward}RP</span></div>
+      {activePanel === 'achievements' && (
+        <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 max-h-[40vh] overflow-auto">
+          <h3 className="text-xs font-bold text-purple-400 mb-2">Achievements</h3>
+          <div className="flex flex-col gap-1.5">
+            {planet.achievements.map(ach => (
+              <div key={ach.id} className={`flex items-center justify-between px-3 py-1.5 rounded ${ach.completed ? 'bg-emerald-950/30 border border-emerald-700/30' : 'bg-slate-800 border border-slate-700/50'}`}>
+                <div>
+                  <div className="text-xs font-semibold">
+                    {ach.completed && <span className="text-emerald-400 mr-1">✓</span>}
+                    {ach.name}
+                  </div>
+                  <div className="text-[10px] text-slate-400">{ach.description}</div>
+                </div>
+                <span className={`text-[10px] font-bold ${ach.completed ? 'text-emerald-400' : 'text-amber-400'}`}>+{ach.reward} RP</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activePanel === 'settings' && (
+        <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 max-h-[40vh] overflow-auto">
+          <h3 className="text-xs font-bold text-slate-300 mb-2">Planet Info</h3>
+          <div className="text-[10px] text-slate-400 mb-2">
+            {planet.runsCompleted} runs | {planet.regions.filter(r => r.state === 'climax').length}/{planet.regions.length} climax
+          </div>
+          <div className="flex flex-col gap-1 mb-3">
+            <ClimateStat label="O₂" stat="o2Density" value={planet.stats.o2Density} />
+            <ClimateStat label="H₂O" stat="hydrologicalActivity" value={planet.stats.hydrologicalActivity} />
+            <ClimateStat label="Temp" stat="thermalBalance" value={planet.stats.thermalBalance} />
+          </div>
+          {globalEffects.length > 0 && (
+            <div className="mb-2">
+              <div className="text-[10px] text-slate-500 uppercase font-semibold mb-1">Global Effects on Runs</div>
+              {globalEffects.map((e, i) => (
+                <div key={i} className="text-[10px] text-cyan-300 mb-0.5">{e}</div>
+              ))}
             </div>
-          ))}
+          )}
+          {globalEffects.length === 0 && (
+            <div className="text-[10px] text-slate-600 italic">Advance regions to improve global parameters.</div>
+          )}
         </div>
       )}
 
@@ -198,7 +300,6 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
             </defs>
             <circle cx="100" cy="100" r="90" fill="url(#planet-bg)" />
             <circle cx="100" cy="100" r="95" fill="url(#atmosphere)" />
-            {/* Surface features */}
             <ellipse cx="70" cy="60" rx="25" ry="10" fill="#065f46" opacity="0.4" />
             <ellipse cx="120" cy="90" rx="30" ry="8" fill="#0d4a3b" opacity="0.3" />
             <ellipse cx="90" cy="130" rx="20" ry="12" fill="#1565C0" opacity="0.2" />
@@ -284,9 +385,15 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
             <div>Seed Bank: <span className="text-white">{selectedRegion.seedBank.length} species</span></div>
             <div>Condition: <span className="text-cyan-300 capitalize">{selectedRegion.localCondition.replace('-', ' ')}</span></div>
           </div>
-          <div className="text-[10px] text-slate-500 mb-2 italic">
+          <div className="text-[10px] text-slate-500 mb-1 italic">
             {LOCAL_CONDITION_DESCRIPTIONS[selectedRegion.localCondition]}
           </div>
+          {/* Show global parameter effects on this region */}
+          {globalEffects.length > 0 && (
+            <div className="text-[10px] text-cyan-400/70 mb-1">
+              Global: {globalEffects.join(' · ')}
+            </div>
+          )}
           <div className="text-xs text-amber-300 mb-3">
             Quest: {selectedRegion.quest.description}
           </div>
