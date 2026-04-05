@@ -28,15 +28,15 @@ function loadPlanet(): Planet | null {
   return null;
 }
 
-// Upgrade costs: each level costs more
+// Upgrade costs: each level costs more (10x scale)
 const UPGRADE_COSTS: Record<string, number[]> = {
-  freeTurnEnds: [30, 60, 100],          // levels 0→1, 1→2, 2→3
-  startingBiomassBonus: [20, 40, 80],
-  ecologicalDrift: [50, 100],            // max 2 levels
+  freeTurnEnds: [300, 600, 1000],          // levels 0→1, 1→2, 2→3
+  startingBiomassBonus: [200, 400, 800],
+  ecologicalDrift: [500, 1000],            // max 2 levels
 };
 
 // Card unlock costs
-const CARD_UNLOCK_COST = 40;
+const CARD_UNLOCK_COST = 400;
 
 export default function Game() {
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -166,7 +166,7 @@ export default function Game() {
     const region = gameState.planet.regions.find(r => r.id === gameState.selectedRegionId);
     if (!region) return;
 
-    const run = startRun(region, deck, gameState.planet.upgrades);
+    const run = startRun(region, deck, gameState.planet.upgrades, gameState.planet.stats);
     setGameState(prev => ({ ...prev, screen: 'run', currentRun: run }));
   }, [gameState.planet, gameState.selectedRegionId]);
 
@@ -274,6 +274,8 @@ export default function Game() {
         onBack={handleBackToTitle}
         onPurchaseUpgrade={handlePurchaseUpgrade}
         onPurchaseAbiotic={handlePurchaseAbiotic}
+        onUnlockCard={handleUnlockCard}
+        cardUnlockCost={CARD_UNLOCK_COST}
       />
     );
   }
@@ -300,6 +302,7 @@ export default function Game() {
         regionName={region.name}
         quest={region.quest}
         freeTurnEnds={planet.upgrades.freeTurnEnds}
+        o2BonusBiomass={Math.max(0, planet.stats.o2Density - 1)}
         onUpdate={handleRunUpdate}
         onEndRun={handleEndRun}
       />

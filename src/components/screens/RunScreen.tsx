@@ -12,6 +12,7 @@ interface RunScreenProps {
   regionName: string;
   quest: Quest;
   freeTurnEnds: number;
+  o2BonusBiomass: number;
   onUpdate: (run: RunState) => void;
   onEndRun: () => void;
 }
@@ -119,7 +120,7 @@ function ResourceBar({ resources, turn, endTurnCost, run, freeTurnEnds, liveScor
   );
 }
 
-export default function RunScreen({ run, regionName, quest, freeTurnEnds, onUpdate, onEndRun }: RunScreenProps) {
+export default function RunScreen({ run, regionName, quest, freeTurnEnds, o2BonusBiomass, onUpdate, onEndRun }: RunScreenProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
@@ -187,7 +188,7 @@ export default function RunScreen({ run, regionName, quest, freeTurnEnds, onUpda
     }
 
     const newRun = { ...run };
-    endTurn(newRun, freeTurnEnds);
+    endTurn(newRun, freeTurnEnds, o2BonusBiomass);
     onUpdate(newRun);
     setMessage(`Year ${newRun.turn} begins`);
     setTimeout(() => setMessage(null), 1500);
