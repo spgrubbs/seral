@@ -216,10 +216,7 @@ export function advanceRegion(region: Region, score: number): void {
     if (nextIdx >= progression.length) break;
     const nextState = progression[nextIdx];
     const requiredStage = stageForLevel[nextState];
-    // barren→pioneer always allowed with any score
-    if (nextState === 'pioneer') {
-      newIdx = nextIdx;
-    } else if (requiredStage && establishedStages.has(requiredStage as import('./types').SuccessionStage)) {
+    if (requiredStage && establishedStages.has(requiredStage as import('./types').SuccessionStage)) {
       newIdx = nextIdx;
     } else {
       break; // Can't advance further without the right species

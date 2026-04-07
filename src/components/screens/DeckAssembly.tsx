@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Card, Region, HexTile, hexKey } from '@/game/types';
 import { ALL_CARDS, EVENT_CARDS, ABIOTIC_CARDS } from '@/game/cards';
 import { getEventCardsForCondition, LOCAL_CONDITION_DESCRIPTIONS } from '@/game/planet';
-import { generateHexGrid, deserializeGrid } from '@/game/hex';
+import { deserializeGrid } from '@/game/hex';
 
 interface DeckAssemblyProps {
   region: Region;
@@ -52,10 +52,8 @@ export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticI
     if (region.savedGrid && region.savedGrid.length > 0) {
       return deserializeGrid(region.savedGrid);
     }
-    // Generate a preview (won't be saved until run starts)
-    const sizeMap: Record<string, number> = { small: 2, medium: 3, large: 4 };
-    const radius = sizeMap[region.mapSize] || 3;
-    return generateHexGrid(radius, region.baseMoisture, region.baseLight, region.baseNutrients, Date.now(), region.localCondition);
+    // Fallback: empty grid (should not happen — grid is saved before reaching this screen)
+    return new Map<string, HexTile>();
   }, [region]);
 
   const availableCards = useMemo(() =>

@@ -5,6 +5,7 @@ import { GameState, Card, Planet, RunState, Region } from '@/game/types';
 import { createInitialGameState, startRun, calculateScore, getEstablishCandidates, getGridForSaving } from '@/game/state';
 import { generatePlanet, advanceRegion, getPlanetNeighbors, checkAchievements } from '@/game/planet';
 import { getStarterDeck, ABIOTIC_CARDS, ALL_CARDS } from '@/game/cards';
+import { generateHexGrid, serializeGrid } from '@/game/hex';
 
 import TitleScreen from './screens/TitleScreen';
 import PlanetMap from './screens/PlanetMap';
@@ -86,12 +87,40 @@ export default function Game() {
   }, []);
 
   const handleStartRunFromMap = useCallback((regionId: string) => {
-    setGameState(prev => ({
-      ...prev,
-      screen: 'deck-assembly',
-      selectedRegionId: regionId,
-      assembledDeck: getStarterDeck(),
-    }));
+    setGameState(prev => {
+      if (!prev.planet) return prev;
+
+      const region = prev.planet.regions.find(r => r.id === regionId);
+      if (!region) return prev;
+
+      // If no saved grid, generate and save one now so DeckAssembly preview matches the run
+      let newPlanet = prev.planet;
+      if (!region.savedGrid || region.savedGrid.length === 0) {
+        newPlanet = { ...prev.planet, regions: prev.planet.regions.map(r => ({ ...r })) };
+        const targetRegion = newPlanet.regions.find(r => r.id === regionId)!;
+        const sizeMap: Record<string, number> = { small: 2, medium: 3, large: 4 };
+        const radius = sizeMap[targetRegion.mapSize] || 3;
+        const moistureBonus = Math.max(0, newPlanet.stats.hydrologicalActivity - 1);
+        const grid = generateHexGrid(
+          radius,
+          targetRegion.baseMoisture + moistureBonus,
+          targetRegion.baseLight,
+          targetRegion.baseNutrients,
+          Date.now(),
+          targetRegion.localCondition,
+        );
+        targetRegion.savedGrid = serializeGrid(grid);
+        savePlanet(newPlanet);
+      }
+
+      return {
+        ...prev,
+        screen: 'deck-assembly' as const,
+        selectedRegionId: regionId,
+        assembledDeck: getStarterDeck(),
+        planet: newPlanet,
+      };
+    });
   }, []);
 
   const handleBackToTitle = useCallback(() => {
@@ -167,20 +196,6 @@ export default function Game() {
     if (!region) return;
 
     const run = startRun(region, deck, gameState.planet.upgrades, gameState.planet.stats);
-
-    // If this region didn't have a saved grid yet, save the generated one
-    if (!region.savedGrid || region.savedGrid.length === 0) {
-      const newPlanet = { ...gameState.planet, regions: gameState.planet.regions.map(r => ({ ...r })) };
-      const targetRegion = newPlanet.regions.find(r => r.id === gameState.selectedRegionId);
-      if (targetRegion) {
-        targetRegion.savedGrid = getGridForSaving(run);
-        savePlanet(newPlanet);
-        setSavedPlanet(newPlanet);
-        setGameState(prev => ({ ...prev, screen: 'run', currentRun: run, planet: newPlanet }));
-        return;
-      }
-    }
-
     setGameState(prev => ({ ...prev, screen: 'run', currentRun: run }));
   }, [gameState.planet, gameState.selectedRegionId]);
 

@@ -86,6 +86,7 @@ type MenuPanel = null | 'research' | 'cards' | 'achievements' | 'settings';
 export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, onPurchaseUpgrade, onPurchaseAbiotic, onUnlockCard, cardUnlockCost }: PlanetMapProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<MenuPanel>(null);
+  const [deckFilter, setDeckFilter] = useState<string>('all');
   const selectedRegion = planet.regions.find(r => r.id === selectedId);
 
   const hexSize = 20;
@@ -181,11 +182,36 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
         </div>
       )}
 
-      {activePanel === 'cards' && (
+      {activePanel === 'cards' && (() => {
+        const lockableCards = ALL_CARDS.filter(c => c.locked);
+        const filtered = lockableCards.filter(card => {
+          const unlocked = planet.unlockedCardIds.includes(card.id);
+          if (deckFilter === 'owned' && !unlocked) return false;
+          if (deckFilter === 'unowned' && unlocked) return false;
+          if (deckFilter === 'pioneer' && card.successionStage !== 'pioneer') return false;
+          if (deckFilter === 'early-seral' && card.successionStage !== 'early-seral') return false;
+          if (deckFilter === 'mid-seral' && card.successionStage !== 'mid-seral') return false;
+          if (deckFilter === 'climax' && card.successionStage !== 'climax') return false;
+          return true;
+        });
+        return (
         <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 max-h-[40vh] overflow-auto">
-          <h3 className="text-xs font-bold text-emerald-400 mb-2">Unlock Species Cards <span className="text-slate-500 font-normal">({cardUnlockCost} RP each)</span></h3>
+          <h3 className="text-xs font-bold text-emerald-400 mb-2">Species Cards <span className="text-slate-500 font-normal">({cardUnlockCost} RP to unlock)</span></h3>
+          <div className="flex gap-1 mb-2 overflow-x-auto text-[9px]">
+            {['all', 'owned', 'unowned', 'pioneer', 'early-seral', 'mid-seral', 'climax'].map(f => (
+              <button
+                key={f}
+                onClick={() => setDeckFilter(f)}
+                className={`px-2 py-1 rounded capitalize whitespace-nowrap ${
+                  deckFilter === f ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {f.replace('-', ' ')}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            {ALL_CARDS.filter(c => c.locked).map(card => {
+            {filtered.map(card => {
               const unlocked = planet.unlockedCardIds.includes(card.id);
               return (
                 <div key={card.id} className={`rounded px-3 py-2 border ${unlocked ? 'bg-emerald-950/30 border-emerald-700/50' : 'bg-slate-800 border-slate-700'}`}>
@@ -208,7 +234,7 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
                     )}
                   </div>
                   {unlocked ? (
-                    <span className="text-[10px] text-emerald-400 font-bold">Unlocked</span>
+                    <span className="text-[10px] text-emerald-400 font-bold">Owned</span>
                   ) : (
                     <button
                       onClick={() => onUnlockCard(card.id)}
@@ -222,8 +248,12 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
               );
             })}
           </div>
+          {filtered.length === 0 && (
+            <div className="text-slate-500 text-xs text-center py-4 italic">No cards match this filter.</div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {activePanel === 'achievements' && (
         <div className="bg-slate-900 border-b border-slate-700 px-4 py-3 max-h-[40vh] overflow-auto">

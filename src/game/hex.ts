@@ -37,12 +37,14 @@ export function hexToPixel(coord: HexCoord, size: number): { x: number; y: numbe
   return { x, y };
 }
 
-/** Generate a hex grid of given radius (creates a roughly circular map) */
+/** Generate a hex grid of given radius (creates a hexagon-shaped map).
+ *  Terrain is generated using moisture blobs for splotchy, naturalistic landscapes.
+ *  Base nutrient levels are 0-2 (modified by organisms/events later). */
 export function generateHexGrid(
   radius: number,
   baseMoisture: number,
   baseLight: number,
-  baseNutrients: number,
+  _baseNutrients: number,
   seed: number = Date.now(),
   localCondition: LocalCondition = 'normal',
 ): Map<string, HexTile> {
@@ -55,49 +57,128 @@ export function generateHexGrid(
   const forcedLight = localCondition === 'windswept' ? 3 : null;
   const moreRocks = localCondition === 'mineral-upwelling';
 
+  // 1. Collect all valid hex coordinates (hexagonal shape)
+  const allCoords: HexCoord[] = [];
   for (let q = -radius; q <= radius; q++) {
     for (let r = -radius; r <= radius; r++) {
-      const dist = hexDistance({ q, r }, { q: 0, r: 0 });
-      if (dist > radius) continue;
-
-      let moisture = clamp(baseMoisture + Math.floor(rng() * 3) - 1 + moistureMod, 0, 5);
-      const light = forcedLight ?? clamp(baseLight + (rng() > 0.7 ? -1 : 0), 1, 3);
-      let nutrients = clamp(baseNutrients + Math.floor(rng() * 3) - 1 + nutrientMod, 1, 5);
-
-      // Determine special hex types
-      let type: HexTile['type'] = 'normal';
-      const rockChance = moreRocks ? 0.22 : 0.1;
-      if (rng() < 0.1) type = 'water';
-      else if (rng() < rockChance) type = 'rock';
-
-      // Rock hexes have LOW nutrients by default (1-2)
-      // Unless mineral-upwelling condition
-      if (type === 'rock') {
-        nutrients = moreRocks ? clamp(4 + Math.floor(rng() * 2), 4, 5) : clamp(1 + Math.floor(rng() * 2), 1, 2);
-        moisture = 0; // rocks are dry
+      if (hexDistance({ q, r }, { q: 0, r: 0 }) <= radius) {
+        allCoords.push({ q, r });
       }
-
-      if (type === 'water') {
-        moisture = 5;
-      }
-
-      // Geothermal: frozen hexes become normal
-      if (localCondition === 'geothermal' && (type as string) === 'frozen') {
-        type = 'normal';
-      }
-
-      const tile: HexTile = {
-        coord: { q, r },
-        moisture,
-        light,
-        nutrients,
-        type,
-        placedCard: null,
-      };
-
-      grid.set(hexKey({ q, r }), tile);
     }
   }
+
+  // 2. Generate moisture blobs for splotchy terrain
+  const numWetBlobs = 2 + Math.floor(rng() * 2); // 2-3 wet zones
+  const wetBlobs: { center: HexCoord; strength: number; reach: number }[] = [];
+  for (let i = 0; i < numWetBlobs; i++) {
+    const center = allCoords[Math.floor(rng() * allCoords.length)];
+    wetBlobs.push({
+      center,
+      strength: 3 + Math.floor(rng() * 3), // moisture 3-5
+      reach: Math.max(1, Math.floor(rng() * radius)),
+    });
+  }
+
+  // Optional dry zone(s)
+  const numDryBlobs = Math.floor(rng() * 2); // 0-1
+  const dryBlobs: { center: HexCoord; reach: number }[] = [];
+  for (let i = 0; i < numDryBlobs; i++) {
+    const center = allCoords[Math.floor(rng() * allCoords.length)];
+    dryBlobs.push({ center, reach: Math.max(1, Math.floor(rng() * radius)) });
+  }
+
+  // 3. Compute moisture for each tile using blob influence
+  const moistureMap = new Map<string, number>();
+  for (const coord of allCoords) {
+    let moisture = Math.max(0, baseMoisture - 1 + moistureMod); // start low
+
+    // Wet blob influence — higher moisture near centers
+    for (const blob of wetBlobs) {
+      const dist = hexDistance(coord, blob.center);
+      if (dist <= blob.reach) {
+        const factor = 1 - dist / (blob.reach + 1);
+        const contribution = Math.round(blob.strength * factor);
+        moisture = Math.max(moisture, contribution);
+      }
+    }
+
+    // Dry blob influence — reduce moisture
+    for (const blob of dryBlobs) {
+      const dist = hexDistance(coord, blob.center);
+      if (dist <= blob.reach) {
+        const factor = 1 - dist / (blob.reach + 1);
+        moisture -= Math.round(2 * factor);
+      }
+    }
+
+    // Small random perturbation (±1)
+    moisture += rng() > 0.65 ? 1 : rng() > 0.5 ? -1 : 0;
+    moisture = clamp(moisture, 0, 5);
+    moistureMap.set(hexKey(coord), moisture);
+  }
+
+  // 4. Place rock clusters (connected patches, not random singles)
+  const rockTiles = new Set<string>();
+  const numRockSeeds = moreRocks ? 2 + Math.floor(rng() * 2) : Math.floor(rng() * 2);
+  for (let i = 0; i < numRockSeeds; i++) {
+    const seedCoord = allCoords[Math.floor(rng() * allCoords.length)];
+    rockTiles.add(hexKey(seedCoord));
+    // Spread to 1-3 adjacent tiles for a cluster
+    const spreadCount = 1 + Math.floor(rng() * 3);
+    const neighbors = hexNeighbors(seedCoord).filter(n =>
+      allCoords.some(c => c.q === n.q && c.r === n.r)
+    );
+    for (let j = 0; j < Math.min(spreadCount, neighbors.length); j++) {
+      const pick = Math.floor(rng() * neighbors.length);
+      rockTiles.add(hexKey(neighbors[pick]));
+    }
+  }
+
+  // 5. Determine water tiles (only in high-moisture areas, tend to cluster)
+  const waterTiles = new Set<string>();
+  for (const coord of allCoords) {
+    const key = hexKey(coord);
+    if (rockTiles.has(key)) continue;
+    const moisture = moistureMap.get(key) || 0;
+    if (moisture >= 4 && rng() < 0.3) {
+      waterTiles.add(key);
+    }
+  }
+
+  // 6. Build the grid tiles
+  for (const coord of allCoords) {
+    const key = hexKey(coord);
+    const blobMoisture = moistureMap.get(key) || 0;
+    const light = forcedLight ?? clamp(baseLight + (rng() > 0.7 ? -1 : 0), 1, 3);
+    let nutrients = clamp(Math.floor(rng() * 3) + nutrientMod, 0, 2); // base 0-2
+
+    let type: HexTile['type'] = 'normal';
+    let tileMoisture = blobMoisture;
+
+    if (waterTiles.has(key)) {
+      type = 'water';
+      tileMoisture = 5;
+    } else if (rockTiles.has(key)) {
+      type = 'rock';
+      nutrients = moreRocks ? clamp(4 + Math.floor(rng() * 2), 4, 5) : clamp(Math.floor(rng() * 2), 0, 1);
+      tileMoisture = 0;
+    }
+
+    // Geothermal: frozen hexes become normal
+    if (localCondition === 'geothermal' && (type as string) === 'frozen') {
+      type = 'normal';
+    }
+
+    grid.set(key, {
+      coord,
+      moisture: tileMoisture,
+      light,
+      nutrients,
+      type,
+      placedCard: null,
+    });
+  }
+
   return grid;
 }
 
