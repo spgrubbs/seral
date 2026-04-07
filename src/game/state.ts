@@ -2,7 +2,7 @@ import {
   GameState, RunState, RunScore, Resources, Card, HexTile,
   hexKey, Region, PlanetUpgrades, PlanetStats, Quest,
 } from './types';
-import { generateHexGrid, applyAbioticEffect, applyEventEffect, processPropagation, calculateAdjacencyBonuses, getValidPlacements, canPlaceCard, hexDistance } from './hex';
+import { generateHexGrid, applyAbioticEffect, applyEventEffect, processPropagation, calculateAdjacencyBonuses, getValidPlacements, canPlaceCard, hexDistance, serializeGrid, deserializeGrid } from './hex';
 import { getStarterDeck, getAnyCardById, EVENT_CARDS } from './cards';
 import { getEventCardsForCondition } from './planet';
 
@@ -30,34 +30,41 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 export function startRun(region: Region, deck: Card[], upgrades?: PlanetUpgrades, planetStats?: PlanetStats): RunState {
-  const sizeMap = { small: 3, medium: 4, large: 5 };
-  const radius = sizeMap[region.mapSize];
+  const sizeMap: Record<string, number> = { small: 2, medium: 3, large: 4 };
+  const radius = sizeMap[region.mapSize] || 3;
 
-  // Apply global planet stat bonuses to base conditions
-  const moistureBonus = planetStats ? Math.max(0, planetStats.hydrologicalActivity - 1) : 0;
-  const grid = generateHexGrid(
-    radius,
-    region.baseMoisture + moistureBonus,
-    region.baseLight,
-    region.baseNutrients,
-    Date.now(),
-    region.localCondition,
-  );
+  // Use persistent grid if available, otherwise generate new
+  let grid: Map<string, HexTile>;
+  if (region.savedGrid && region.savedGrid.length > 0) {
+    grid = deserializeGrid(region.savedGrid);
+  } else {
+    const moistureBonus = planetStats ? Math.max(0, planetStats.hydrologicalActivity - 1) : 0;
+    grid = generateHexGrid(
+      radius,
+      region.baseMoisture + moistureBonus,
+      region.baseLight,
+      region.baseNutrients,
+      Date.now(),
+      region.localCondition,
+    );
+  }
 
-  // Place seed bank cards on valid hexes
-  // Ecological drift: spread seeds further from center (up to ecologicalDrift + 1 hexes away)
-  const driftRange = (upgrades?.ecologicalDrift || 0) + 1;
-  const center = { q: 0, r: 0 };
-  for (const card of region.seedBank) {
-    const valid = getValidPlacements(card, grid);
-    // Prefer hexes at increasing distance from center based on drift level
-    const candidates = valid.filter(c => {
-      const dist = hexDistance(c, center);
-      return dist <= driftRange;
-    });
-    const placementPool = candidates.length > 0 ? candidates : valid;
-    if (placementPool.length > 0) {
-      const coord = placementPool[Math.floor(Math.random() * placementPool.length)];
+  // Place established species: 3 copies of each, starting with early-successional
+  const successionOrder: string[] = ['pioneer', 'early-seral', 'mid-seral', 'climax'];
+  const sortedSeedBank = [...region.seedBank].sort((a, b) => {
+    const ai = successionOrder.indexOf(a.successionStage || 'pioneer');
+    const bi = successionOrder.indexOf(b.successionStage || 'pioneer');
+    return ai - bi;
+  });
+  // Deduplicate — place each unique species up to 3 times
+  const seenSpecies = new Set<string>();
+  for (const card of sortedSeedBank) {
+    if (seenSpecies.has(card.id)) continue;
+    seenSpecies.add(card.id);
+    for (let i = 0; i < 3; i++) {
+      const valid = getValidPlacements(card, grid);
+      if (valid.length === 0) break;
+      const coord = valid[Math.floor(Math.random() * valid.length)];
       const tile = grid.get(hexKey(coord));
       if (tile && !tile.placedCard) {
         tile.placedCard = { card: { ...card }, turnsActive: 0, biomassGenerated: 0 };
@@ -345,22 +352,29 @@ export function calculateProjectedIncome(run: RunState, freeTurnEnds: number = 0
 }
 
 export function getEstablishCandidates(run: RunState): Card[] {
-  const candidates: { card: Card; score: number }[] = [];
+  // Count population per species
+  const popCounts = new Map<string, number>();
+  const bestCard = new Map<string, { card: Card; score: number }>();
   run.hexGrid.forEach((tile) => {
     if (!tile.placedCard || tile.placedCard.card.type !== 'species') return;
     const pc = tile.placedCard;
+    popCounts.set(pc.card.id, (popCounts.get(pc.card.id) || 0) + 1);
     const score = pc.turnsActive * 2 + pc.biomassGenerated;
-    candidates.push({ card: pc.card, score });
+    const existing = bestCard.get(pc.card.id);
+    if (!existing || score > existing.score) {
+      bestCard.set(pc.card.id, { card: pc.card, score });
+    }
   });
 
-  candidates.sort((a, b) => b.score - a.score);
-  const seen = new Set<string>();
-  const unique: Card[] = [];
-  for (const c of candidates) {
-    if (!seen.has(c.card.id) && unique.length < 3) {
-      seen.add(c.card.id);
-      unique.push(c.card);
-    }
-  }
-  return unique;
+  // Only offer species with population >= 6
+  const eligible = Array.from(bestCard.values())
+    .filter(c => (popCounts.get(c.card.id) || 0) >= 6)
+    .sort((a, b) => b.score - a.score);
+
+  return eligible.slice(0, 3).map(c => c.card);
+}
+
+/** Serialize the current hex grid terrain for persistent storage */
+export function getGridForSaving(run: RunState): import('./types').SerializedHexTile[] {
+  return serializeGrid(run.hexGrid);
 }

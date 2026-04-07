@@ -40,7 +40,7 @@ export interface Resources {
 
 export type CardType = 'species' | 'abiotic' | 'event';
 export type TrophicLevel = 'producer' | 'consumer' | 'decomposer';
-export type SuccessionStage = 'pioneer' | 'grassland' | 'woodland' | 'climax';
+export type SuccessionStage = 'pioneer' | 'early-seral' | 'mid-seral' | 'climax';
 export type CardTag = 'n-fixer' | 'pollinator' | 'predator' | 'pioneer' | 'aquatic' | 'fungal' | 'canopy' | 'shade-tolerant' | 'angiosperm' | 'decomposer' | 'prey' | 'herbivore';
 
 export interface PlacementRequirement {
@@ -88,7 +88,7 @@ export interface Card {
 
 // --- Region / Planet Map ---
 
-export type RegionState = 'locked' | 'barren' | 'pioneer' | 'grassland' | 'woodland' | 'climax' | 'disturbed';
+export type RegionState = 'locked' | 'barren' | 'pioneer' | 'early-seral' | 'mid-seral' | 'climax' | 'disturbed';
 export type ClimateBand = 'polar' | 'temperate' | 'equatorial';
 
 /**
@@ -117,6 +117,16 @@ export interface Quest {
   targetValue: number;
 }
 
+/** Serializable version of a hex tile (no placed cards) for persistent storage */
+export interface SerializedHexTile {
+  q: number;
+  r: number;
+  moisture: number;
+  light: number;
+  nutrients: number;
+  type: 'normal' | 'water' | 'rock' | 'frozen';
+}
+
 export interface Region {
   id: string;
   name: string;
@@ -130,6 +140,7 @@ export interface Region {
   quest: Quest;
   localCondition: LocalCondition;
   mapSize: 'small' | 'medium' | 'large';
+  savedGrid?: SerializedHexTile[];
 }
 
 export interface PlanetStats {

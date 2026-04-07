@@ -20,15 +20,15 @@ const STATE_COLORS: Record<RegionState, string> = {
   locked: '#1a1a2e',
   barren: '#8B8378',
   pioneer: '#C4A35A',
-  grassland: '#7CB342',
-  woodland: '#388E3C',
+  'early-seral': '#7CB342',
+  'mid-seral': '#388E3C',
   climax: '#00897B',
   disturbed: '#E57373',
 };
 
 const STATE_LABELS: Record<RegionState, string> = {
   locked: 'Locked', barren: 'Barren', pioneer: 'Pioneer',
-  grassland: 'Grassland', woodland: 'Woodland', climax: 'Climax', disturbed: 'Disturbed',
+  'early-seral': 'Early Seral', 'mid-seral': 'Mid Seral', climax: 'Climax', disturbed: 'Disturbed',
 };
 
 const BAND_LABELS = ['Polar', 'Temperate', 'Equatorial', 'Equatorial', 'Temperate', 'Polar'];
@@ -100,37 +100,27 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
   return (
     <div className="flex flex-col min-h-screen bg-slate-950 text-white">
       {/* Top Menu Bar */}
-      <div className="flex items-center justify-between px-2 py-1.5 bg-slate-900 border-b border-slate-800">
-        <button onClick={onBack} className="text-slate-400 hover:text-white text-xs px-2 py-1">&larr;</button>
-        <div className="text-center flex-1">
+      <div className="bg-slate-900 border-b border-slate-800">
+        <div className="flex items-center justify-between px-3 py-1">
+          <button onClick={onBack} className="text-slate-400 hover:text-white text-xs">&larr;</button>
           <h1 className="text-sm font-bold text-emerald-400">{planet.name}</h1>
+          <span className="text-amber-400 text-xs font-bold">{planet.researchPoints} RP</span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-amber-400 text-xs font-bold mr-1">{planet.researchPoints} RP</span>
-          <button
-            onClick={() => togglePanel('research')}
-            className={`text-[10px] px-2 py-1 rounded ${activePanel === 'research' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-          >
-            Research
-          </button>
-          <button
-            onClick={() => togglePanel('cards')}
-            className={`text-[10px] px-2 py-1 rounded ${activePanel === 'cards' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-          >
-            Cards
-          </button>
-          <button
-            onClick={() => togglePanel('achievements')}
-            className={`text-[10px] px-2 py-1 rounded ${activePanel === 'achievements' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-          >
-            Achieve
-          </button>
-          <button
-            onClick={() => togglePanel('settings')}
-            className={`text-[10px] px-2 py-1 rounded ${activePanel === 'settings' ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-          >
-            Info
-          </button>
+        <div className="flex gap-1 px-2 pb-1.5">
+          {([
+            { key: 'research' as MenuPanel, label: 'Research', active: 'bg-amber-600', inactive: 'bg-slate-800' },
+            { key: 'cards' as MenuPanel, label: 'Deck', active: 'bg-emerald-600', inactive: 'bg-slate-800' },
+            { key: 'achievements' as MenuPanel, label: 'Achievements', active: 'bg-purple-600', inactive: 'bg-slate-800' },
+            { key: 'settings' as MenuPanel, label: 'Settings', active: 'bg-slate-600', inactive: 'bg-slate-800' },
+          ]).map(btn => (
+            <button
+              key={btn.key}
+              onClick={() => togglePanel(btn.key)}
+              className={`flex-1 text-[11px] py-1.5 rounded font-semibold ${activePanel === btn.key ? `${btn.active} text-white` : `${btn.inactive} text-slate-400 hover:text-white`}`}
+            >
+              {btn.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -280,91 +270,76 @@ export default function PlanetMap({ planet, onSelectRegion, onStartRun, onBack, 
         </div>
       )}
 
-      {/* Hex Map with planet background */}
-      <div className="flex-1 overflow-auto relative">
-        {/* Planet background */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
-          <svg viewBox="0 0 200 200" width="300" height="300">
-            <defs>
-              <radialGradient id="planet-bg" cx="40%" cy="35%">
-                <stop offset="0%" stopColor="#4ade80" />
-                <stop offset="40%" stopColor="#166534" />
-                <stop offset="70%" stopColor="#064e3b" />
-                <stop offset="100%" stopColor="#022c22" />
-              </radialGradient>
-              <radialGradient id="atmosphere" cx="50%" cy="50%">
-                <stop offset="80%" stopColor="transparent" />
-                <stop offset="95%" stopColor="#34d399" stopOpacity="0.2" />
-                <stop offset="100%" stopColor="transparent" />
-              </radialGradient>
-            </defs>
-            <circle cx="100" cy="100" r="90" fill="url(#planet-bg)" />
-            <circle cx="100" cy="100" r="95" fill="url(#atmosphere)" />
-            <ellipse cx="70" cy="60" rx="25" ry="10" fill="#065f46" opacity="0.4" />
-            <ellipse cx="120" cy="90" rx="30" ry="8" fill="#0d4a3b" opacity="0.3" />
-            <ellipse cx="90" cy="130" rx="20" ry="12" fill="#1565C0" opacity="0.2" />
-          </svg>
-        </div>
+      {/* Hex Map — single SVG with proper flat-top odd-q offset */}
+      <div className="flex-1 overflow-auto relative flex items-center justify-center">
+        {(() => {
+          // Compute pixel positions for all regions using flat-top odd-q offset
+          const h = hexSize * 2;
+          const w = Math.sqrt(3) * hexSize;
+          const positions = planet.regions.map(region => {
+            const px = region.coord.q * (h * 3 / 4);
+            const py = region.coord.r * w + (region.coord.q % 2 !== 0 ? w / 2 : 0);
+            return { region, px, py };
+          });
+          const allX = positions.map(p => p.px);
+          const allY = positions.map(p => p.py);
+          const pad = hexSize * 1.5;
+          const svgMinX = Math.min(...allX) - pad;
+          const svgMaxX = Math.max(...allX) + pad;
+          const svgMinY = Math.min(...allY) - pad;
+          const svgMaxY = Math.max(...allY) + pad;
+          const svgW = svgMaxX - svgMinX;
+          const svgH = svgMaxY - svgMinY;
 
-        <div className="relative z-10 p-4 flex flex-col items-center gap-0">
-          {BAND_LABELS.map((bandLabel, rowIdx) => {
-            const rowRegions = planet.regions
-              .filter(r => r.coord.r === rowIdx)
-              .sort((a, b) => a.coord.q - b.coord.q);
-            const isOddRow = rowIdx % 2 !== 0;
+          return (
+            <svg viewBox={`${svgMinX} ${svgMinY} ${svgW} ${svgH}`} className="w-full h-full" style={{ maxHeight: '55vh' }}>
+              {/* Band labels */}
+              {BAND_LABELS.map((label, rowIdx) => {
+                if (rowIdx > 2) return null;
+                const rowRegion = positions.find(p => p.region.coord.r === rowIdx && p.region.coord.q === 0);
+                if (!rowRegion) return null;
+                return (
+                  <text key={`band-${rowIdx}`} x={rowRegion.px - hexSize * 2} y={rowRegion.py + 3} fontSize="6" fill="#475569" textAnchor="end">
+                    {label}
+                  </text>
+                );
+              })}
+              {positions.map(({ region, px, py }) => {
+                const isSelected = selectedId === region.id;
+                return (
+                  <g
+                    key={region.id}
+                    onClick={() => { setSelectedId(region.id); onSelectRegion(region.id); }}
+                    className={`cursor-pointer ${region.state === 'locked' ? 'opacity-40' : ''}`}
+                  >
+                    <polygon
+                      points={flatHexPoints(px, py, hexSize)}
+                      fill={STATE_COLORS[region.state]}
+                      stroke={isSelected ? '#00BCD4' : '#37474F'}
+                      strokeWidth={isSelected ? 2 : 0.5}
+                    />
+                    {region.state === 'climax' && (
+                      <circle cx={px} cy={py} r={3} fill="white" opacity="0.6" />
+                    )}
+                    {region.state === 'disturbed' && (
+                      <text x={px} y={py + 4} textAnchor="middle" fontSize="12" fill="white" fontWeight="bold">!</text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          );
+        })()}
+      </div>
 
-            return (
-              <div key={rowIdx} className="flex items-center" style={{ marginTop: rowIdx === 0 ? 0 : -6 }}>
-                {(rowIdx === 0 || rowIdx === 1 || rowIdx === 2) ? (
-                  <span className="text-[8px] text-slate-600 w-14 text-right mr-1">{bandLabel}</span>
-                ) : (
-                  <span className="w-14 mr-1" />
-                )}
-                <svg
-                  width={cols * hexSize * 1.55 + (isOddRow ? hexSize * 0.75 : 0) + hexSize}
-                  height={hexSize * 1.8}
-                  className="overflow-visible"
-                >
-                  {rowRegions.map(region => {
-                    const cx = region.coord.q * hexSize * 1.55 + hexSize + (isOddRow ? hexSize * 0.75 : 0);
-                    const cy = hexSize;
-                    const isSelected = selectedId === region.id;
-                    return (
-                      <g
-                        key={region.id}
-                        onClick={() => { setSelectedId(region.id); onSelectRegion(region.id); }}
-                        className={`cursor-pointer ${region.state === 'locked' ? 'opacity-40' : ''}`}
-                      >
-                        <polygon
-                          points={flatHexPoints(cx, cy, hexSize)}
-                          fill={STATE_COLORS[region.state]}
-                          stroke={isSelected ? '#00BCD4' : '#37474F'}
-                          strokeWidth={isSelected ? 2 : 0.5}
-                        />
-                        {region.state === 'climax' && (
-                          <circle cx={cx} cy={cy} r={3} fill="white" opacity="0.6" />
-                        )}
-                        {region.state === 'disturbed' && (
-                          <text x={cx} y={cy + 4} textAnchor="middle" fontSize="12" fill="white" fontWeight="bold">!</text>
-                        )}
-                      </g>
-                    );
-                  })}
-                </svg>
-              </div>
-            );
-          })}
-
-          {/* Legend */}
-          <div className="flex flex-wrap gap-2 justify-center mt-3 text-[9px]">
-            {Object.entries(STATE_COLORS).map(([state, color]) => (
-              <div key={state} className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded" style={{ backgroundColor: color }} />
-                <span className="text-slate-500 capitalize">{state}</span>
-              </div>
-            ))}
+      {/* Legend */}
+      <div className="flex flex-wrap gap-2 justify-center py-1.5 text-[9px] bg-slate-950">
+        {Object.entries(STATE_COLORS).map(([state, color]) => (
+          <div key={state} className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded" style={{ backgroundColor: color }} />
+            <span className="text-slate-500 capitalize">{state.replace('-', ' ')}</span>
           </div>
-        </div>
+        ))}
       </div>
 
       {/* Region Detail Panel */}

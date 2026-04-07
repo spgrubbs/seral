@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { GameState, Card, Planet, RunState, Region } from '@/game/types';
-import { createInitialGameState, startRun, calculateScore, getEstablishCandidates } from '@/game/state';
+import { createInitialGameState, startRun, calculateScore, getEstablishCandidates, getGridForSaving } from '@/game/state';
 import { generatePlanet, advanceRegion, getPlanetNeighbors, checkAchievements } from '@/game/planet';
 import { getStarterDeck, ABIOTIC_CARDS, ALL_CARDS } from '@/game/cards';
 
@@ -167,6 +167,20 @@ export default function Game() {
     if (!region) return;
 
     const run = startRun(region, deck, gameState.planet.upgrades, gameState.planet.stats);
+
+    // If this region didn't have a saved grid yet, save the generated one
+    if (!region.savedGrid || region.savedGrid.length === 0) {
+      const newPlanet = { ...gameState.planet, regions: gameState.planet.regions.map(r => ({ ...r })) };
+      const targetRegion = newPlanet.regions.find(r => r.id === gameState.selectedRegionId);
+      if (targetRegion) {
+        targetRegion.savedGrid = getGridForSaving(run);
+        savePlanet(newPlanet);
+        setSavedPlanet(newPlanet);
+        setGameState(prev => ({ ...prev, screen: 'run', currentRun: run, planet: newPlanet }));
+        return;
+      }
+    }
+
     setGameState(prev => ({ ...prev, screen: 'run', currentRun: run }));
   }, [gameState.planet, gameState.selectedRegionId]);
 
@@ -213,12 +227,17 @@ export default function Game() {
       });
     }
 
+    // Save the hex grid terrain to the region for persistence
+    if (gameState.currentRun) {
+      region.savedGrid = getGridForSaving(gameState.currentRun);
+    }
+
     // Update planet stats
     const climaxCount = newPlanet.regions.filter(r => r.state === 'climax').length;
-    const woodlandCount = newPlanet.regions.filter(r => r.state === 'woodland' || r.state === 'climax').length;
+    const midSeralPlus = newPlanet.regions.filter(r => r.state === 'mid-seral' || r.state === 'climax').length;
     newPlanet.stats.o2Density = Math.min(5, 1 + Math.floor(climaxCount / 2));
-    newPlanet.stats.hydrologicalActivity = Math.min(5, 1 + Math.floor(woodlandCount / 3));
-    newPlanet.stats.thermalBalance = Math.min(5, 1 + Math.floor(woodlandCount / 2));
+    newPlanet.stats.hydrologicalActivity = Math.min(5, 1 + Math.floor(midSeralPlus / 3));
+    newPlanet.stats.thermalBalance = Math.min(5, 1 + Math.floor(midSeralPlus / 2));
 
     // Add research points from score
     newPlanet.researchPoints += gameState.currentRun.score.total;
