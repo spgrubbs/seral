@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Card, Region } from '@/game/types';
+import { Card, Region, HexTile, hexKey } from '@/game/types';
 import { ALL_CARDS, EVENT_CARDS, ABIOTIC_CARDS } from '@/game/cards';
 import { getEventCardsForCondition, LOCAL_CONDITION_DESCRIPTIONS } from '@/game/planet';
+import { generateHexGrid, deserializeGrid } from '@/game/hex';
 
 interface DeckAssemblyProps {
   region: Region;
@@ -15,6 +16,23 @@ interface DeckAssemblyProps {
 }
 
 const MAX_DECK_SIZE = 15;
+
+// Simple flat-top hex points
+function flatHexPoints(cx: number, cy: number, size: number): string {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 180) * (60 * i);
+    pts.push(`${cx + Math.cos(angle) * size},${cy + Math.sin(angle) * size}`);
+  }
+  return pts.join(' ');
+}
+
+function moistureColor(moisture: number, type: HexTile['type']): string {
+  if (type === 'water') return '#1565C0';
+  if (type === 'rock') return '#616161';
+  const colors = ['#C4A882', '#D2B48C', '#C8B560', '#7CB342', '#4DB6AC', '#1E88E5'];
+  return colors[Math.max(0, Math.min(5, moisture))];
+}
 
 export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticIds, suggestedDeck, onStartRun, onBack }: DeckAssemblyProps) {
   const [deck, setDeck] = useState<Card[]>(suggestedDeck);
@@ -29,6 +47,17 @@ export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticI
   // Available abiotic cards (purchased ones)
   const availableAbiotics = ABIOTIC_CARDS.filter(c => unlockedAbioticIds.includes(c.id));
 
+  // Generate or load the map preview
+  const previewGrid = useMemo(() => {
+    if (region.savedGrid && region.savedGrid.length > 0) {
+      return deserializeGrid(region.savedGrid);
+    }
+    // Generate a preview (won't be saved until run starts)
+    const sizeMap: Record<string, number> = { small: 2, medium: 3, large: 4 };
+    const radius = sizeMap[region.mapSize] || 3;
+    return generateHexGrid(radius, region.baseMoisture, region.baseLight, region.baseNutrients, Date.now(), region.localCondition);
+  }, [region]);
+
   const availableCards = useMemo(() =>
     ALL_CARDS.filter(c => unlockedCardIds.includes(c.id)),
     [unlockedCardIds]
@@ -38,8 +67,8 @@ export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticI
     let cards = availableCards;
     if (filter === 'species') cards = cards.filter(c => c.type === 'species');
     if (filter === 'pioneer') cards = cards.filter(c => c.successionStage === 'pioneer');
-    if (filter === 'grassland') cards = cards.filter(c => c.successionStage === 'grassland');
-    if (filter === 'woodland') cards = cards.filter(c => c.successionStage === 'woodland');
+    if (filter === 'early-seral') cards = cards.filter(c => c.successionStage === 'early-seral');
+    if (filter === 'mid-seral') cards = cards.filter(c => c.successionStage === 'mid-seral');
     if (filter === 'climax') cards = cards.filter(c => c.successionStage === 'climax');
     return cards;
   }, [availableCards, filter]);
@@ -61,42 +90,91 @@ export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticI
 
   const totalCards = deck.length + mandatoryEvents.length + availableAbiotics.length;
 
+  // Compute SVG for map preview
+  const mapPreview = useMemo(() => {
+    const hexSize = 10;
+    const positions: { key: string; px: number; py: number; tile: HexTile }[] = [];
+    previewGrid.forEach((tile, key) => {
+      const h = hexSize * 2;
+      const w = Math.sqrt(3) * hexSize;
+      const px = tile.coord.q * (h * 3 / 4);
+      const py = tile.coord.r * w + (tile.coord.q % 2 !== 0 ? w / 2 : 0);
+      positions.push({ key, px, py, tile });
+    });
+    if (positions.length === 0) return null;
+    const allX = positions.map(p => p.px);
+    const allY = positions.map(p => p.py);
+    const pad = hexSize * 1.5;
+    const minX = Math.min(...allX) - pad;
+    const maxX = Math.max(...allX) + pad;
+    const minY = Math.min(...allY) - pad;
+    const maxY = Math.max(...allY) + pad;
+    return { positions, viewBox: `${minX} ${minY} ${maxX - minX} ${maxY - minY}`, hexSize };
+  }, [previewGrid]);
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-950 text-white">
       {/* Header */}
-      <div className="px-4 py-3 bg-slate-900 border-b border-slate-800">
-        <div className="flex items-center justify-between mb-1">
+      <div className="px-4 py-2 bg-slate-900 border-b border-slate-800">
+        <div className="flex items-center justify-between">
           <button onClick={onBack} className="text-slate-400 hover:text-white text-sm">&larr; Map</button>
           <span className="text-emerald-400 font-bold text-sm">{deck.length}/{MAX_DECK_SIZE} species</span>
         </div>
-        <h2 className="text-base font-bold">{region.name}</h2>
-        <div className="flex gap-2 text-[10px] text-slate-400 mt-1">
-          <span>Size: <span className="text-white capitalize">{region.mapSize}</span></span>
-          <span>|</span>
-          <span>Condition: <span className="text-cyan-300 capitalize">{region.localCondition.replace('-', ' ')}</span></span>
-        </div>
-        <div className="text-[10px] text-amber-300 mt-1">{region.quest.description}</div>
       </div>
 
-      {/* Deck visualization: top half */}
-      <div className="px-4 py-3 bg-slate-900/50 border-b border-slate-800">
-        {/* Card backs visualization */}
-        <div className="flex items-center gap-2 mb-2">
-          <div className="flex -space-x-2">
-            {deck.slice(0, 12).map((_, i) => (
-              <div key={i} className="w-5 h-7 rounded-sm bg-gradient-to-br from-emerald-700 to-emerald-900 border border-emerald-600/50" />
-            ))}
-            {deck.length > 12 && (
-              <div className="w-5 h-7 rounded-sm bg-emerald-800 border border-emerald-600/50 flex items-center justify-center text-[7px] text-emerald-300">
-                +{deck.length - 12}
-              </div>
+      {/* Top Half: Map Preview + Region Info */}
+      <div className="bg-slate-900/50 border-b border-slate-800 px-4 py-3" style={{ maxHeight: '42vh', overflow: 'hidden' }}>
+        <div className="flex gap-3">
+          {/* Map SVG */}
+          <div className="flex-1 flex items-center justify-center">
+            {mapPreview && (
+              <svg viewBox={mapPreview.viewBox} className="w-full" style={{ maxHeight: '28vh' }}>
+                {mapPreview.positions.map(({ key, px, py, tile }) => (
+                  <polygon
+                    key={key}
+                    points={flatHexPoints(px, py, mapPreview.hexSize)}
+                    fill={moistureColor(tile.moisture, tile.type)}
+                    stroke="#37474F"
+                    strokeWidth={0.5}
+                  />
+                ))}
+              </svg>
             )}
           </div>
-          <span className="text-slate-500 text-[10px]">{totalCards} total in deck</span>
+
+          {/* Region Info */}
+          <div className="w-[140px] flex-shrink-0 text-[10px]">
+            <h2 className="text-sm font-bold mb-1">{region.name}</h2>
+            <div className="text-slate-400 mb-1">
+              <span className="capitalize">{region.mapSize}</span> · <span className="capitalize">{region.climateBand}</span>
+            </div>
+            <div className="text-cyan-300 capitalize mb-1">{region.localCondition.replace('-', ' ')}</div>
+            <div className="text-slate-500 text-[9px] italic mb-2">
+              {LOCAL_CONDITION_DESCRIPTIONS[region.localCondition]}
+            </div>
+
+            {/* Established species */}
+            {region.seedBank.length > 0 && (
+              <div className="mb-2">
+                <div className="text-slate-500 uppercase font-semibold text-[8px] mb-0.5">Established</div>
+                {Array.from(new Set(region.seedBank.map(c => c.name))).map(name => (
+                  <div key={name} className="text-emerald-400 text-[9px]">{name}</div>
+                ))}
+              </div>
+            )}
+
+            {/* Quest */}
+            <div className="text-amber-300 text-[9px]">{region.quest.description}</div>
+
+            {/* Terrain summary */}
+            <div className="mt-1 text-slate-500 text-[9px]">
+              {previewGrid.size} hexes · M:{region.baseMoisture} L:{region.baseLight} N:{region.baseNutrients}
+            </div>
+          </div>
         </div>
 
-        {/* Card name list */}
-        <div className="flex flex-wrap gap-1">
+        {/* Deck chips */}
+        <div className="flex flex-wrap gap-1 mt-2">
           {Array.from(deckCounts.entries()).map(([cardId, count]) => {
             const card = deck.find(c => c.id === cardId)!;
             return (
@@ -112,13 +190,11 @@ export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticI
               </button>
             );
           })}
-          {/* Mandatory events */}
           {mandatoryEvents.map((card, i) => (
             <span key={`evt-${i}`} className="text-[10px] bg-purple-900/30 px-2 py-0.5 rounded border border-purple-700/50 text-purple-300">
               {card.name} <span className="text-purple-500">(auto)</span>
             </span>
           ))}
-          {/* Available abiotics */}
           {availableAbiotics.map(card => (
             <span key={card.id} className="text-[10px] bg-stone-800/50 px-2 py-0.5 rounded border border-stone-600/50 text-stone-300">
               {card.name} <span className="text-stone-500">(tool)</span>
@@ -127,9 +203,10 @@ export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticI
         </div>
       </div>
 
+      {/* Bottom Half: Deck Building */}
       {/* Filters */}
       <div className="flex gap-1 px-4 py-2 overflow-x-auto text-[10px]">
-        {['all', 'species', 'pioneer', 'grassland', 'woodland', 'climax'].map(f => (
+        {['all', 'species', 'pioneer', 'early-seral', 'mid-seral', 'climax'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -137,14 +214,14 @@ export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticI
               filter === f ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
             }`}
           >
-            {f}
+            {f.replace('-', ' ')}
           </button>
         ))}
       </div>
 
       {/* Card Browser */}
       <div className="flex-1 overflow-auto px-4 pb-20">
-        <div className="grid grid-cols-2 gap-2 mt-2">
+        <div className="grid grid-cols-2 gap-2 mt-1">
           {filteredCards.map(card => {
             const inDeck = deckCounts.get(card.id) || 0;
             return (
@@ -165,13 +242,11 @@ export default function DeckAssembly({ region, unlockedCardIds, unlockedAbioticI
                   {inDeck > 0 && <span className="text-[9px] text-emerald-400 font-bold">x{inDeck}</span>}
                 </div>
                 <div className="text-xs font-semibold mb-1">{card.name}</div>
-                {/* Cost pills — no letters, colored only */}
                 <div className="flex gap-1 flex-wrap mb-1">
                   {card.cost.biomass > 0 && <span className="bg-green-600 text-white text-[9px] w-5 h-4 flex items-center justify-center rounded-full font-bold">{card.cost.biomass}</span>}
                   {card.cost.nutrients > 0 && <span className="bg-amber-600 text-white text-[9px] w-5 h-4 flex items-center justify-center rounded-full font-bold">{card.cost.nutrients}</span>}
                   {card.cost.water > 0 && <span className="bg-blue-500 text-white text-[9px] w-5 h-4 flex items-center justify-center rounded-full font-bold">{card.cost.water}</span>}
                 </div>
-                {/* Requirements */}
                 <div className="text-cyan-400/60 text-[8px] mb-0.5">
                   {card.placement.minMoisture !== undefined && `M:${card.placement.minMoisture}-${card.placement.maxMoisture ?? 5} `}
                   {card.placement.minLight !== undefined && `L:${card.placement.minLight}-${card.placement.maxLight ?? 3} `}

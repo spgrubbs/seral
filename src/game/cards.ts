@@ -10,10 +10,10 @@ import { Card } from './types';
 // Volcanic/mineral-upwelling conditions can override to 4-5.
 //
 // Trophic cost scaling:
-//   Pioneer  — 1-2 biomass
-//   Grassland — 3-5 biomass
-//   Woodland  — 6-8 biomass
-//   Climax    — 8-12 biomass
+//   Pioneer     — 1-2 biomass
+//   Early Seral — 3-5 biomass
+//   Mid Seral   — 6-8 biomass
+//   Climax      — 8-12 biomass
 //
 // Unlocked at game start: crust-lichen, spore-moss, pioneer-fern,
 //   blue-green-algae, mycorrhizal-fungi, soil-bacteria
@@ -186,7 +186,7 @@ export const ALL_CARDS: Card[] = [
     locked: true,
   },
 
-  // ===== GRASSLAND PRODUCERS =====
+  // ===== EARLY SERAL PRODUCERS =====
 
   {
     id: 'tussock-grass',
@@ -196,7 +196,7 @@ export const ALL_CARDS: Card[] = [
     cost: { biomass: 3, nutrients: 2, water: 1 },
     incomePerTurn: { biomass: 2, nutrients: 0, water: 0 },
     trophicLevel: 'producer',
-    successionStage: 'grassland',
+    successionStage: 'early-seral',
     tags: ['pioneer'],
     placement: { minMoisture: 2, maxMoisture: 4, minLight: 2, maxLight: 3, minNutrients: 2 },
     adjacencyEffect: { moisture: 1 },
@@ -215,7 +215,7 @@ export const ALL_CARDS: Card[] = [
     cost: { biomass: 4, nutrients: 2, water: 2 },
     incomePerTurn: { biomass: 3, nutrients: 0, water: 0 },
     trophicLevel: 'producer',
-    successionStage: 'grassland',
+    successionStage: 'early-seral',
     tags: ['angiosperm'],
     placement: { minMoisture: 3, maxMoisture: 4, minLight: 2, maxLight: 3, minNutrients: 2 },
     sprite: 'flower',
@@ -223,7 +223,7 @@ export const ALL_CARDS: Card[] = [
     locked: true,
   },
 
-  // ===== GRASSLAND CONSUMERS =====
+  // ===== EARLY SERAL CONSUMERS =====
 
   {
     id: 'pollinator-bee',
@@ -233,7 +233,7 @@ export const ALL_CARDS: Card[] = [
     cost: { biomass: 3, nutrients: 0, water: 1 },
     incomePerTurn: { biomass: 1, nutrients: 0, water: 0 },
     trophicLevel: 'consumer',
-    successionStage: 'grassland',
+    successionStage: 'early-seral',
     tags: ['pollinator'],
     placement: { minMoisture: 1, maxMoisture: 4, minLight: 2, maxLight: 3, adjacentTag: 'angiosperm' },
     adjacencyEffect: { biomassPerTurn: 1 },
@@ -250,7 +250,7 @@ export const ALL_CARDS: Card[] = [
     cost: { biomass: 5, nutrients: 1, water: 2 },
     incomePerTurn: { biomass: 2, nutrients: 0, water: 0 },
     trophicLevel: 'consumer',
-    successionStage: 'grassland',
+    successionStage: 'early-seral',
     tags: ['herbivore', 'prey'],
     placement: { minMoisture: 2, maxMoisture: 4, minLight: 2, maxLight: 3, minNutrients: 2 },
     propagates: true,
@@ -268,7 +268,7 @@ export const ALL_CARDS: Card[] = [
     cost: { biomass: 3, nutrients: 0, water: 1 },
     incomePerTurn: { biomass: 0, nutrients: 2, water: 0 },
     trophicLevel: 'decomposer',
-    successionStage: 'grassland',
+    successionStage: 'early-seral',
     tags: ['decomposer', 'fungal'],
     placement: { minMoisture: 2, maxMoisture: 4, minNutrients: 1, minLight: 1, maxLight: 3 },
     adjacencyEffect: { nutrientsPerTurn: 1 },
@@ -277,7 +277,7 @@ export const ALL_CARDS: Card[] = [
     locked: true,
   },
 
-  // ===== WOODLAND =====
+  // ===== MID SERAL =====
 
   {
     id: 'canopy-oak',
@@ -287,7 +287,7 @@ export const ALL_CARDS: Card[] = [
     cost: { biomass: 6, nutrients: 3, water: 3 },
     incomePerTurn: { biomass: 4, nutrients: 0, water: 1 },
     trophicLevel: 'producer',
-    successionStage: 'woodland',
+    successionStage: 'mid-seral',
     tags: ['canopy'],
     placement: { minMoisture: 3, maxMoisture: 4, minLight: 3, maxLight: 3, minNutrients: 3 },
     adjacencyEffect: { light: -1 },
@@ -305,7 +305,7 @@ export const ALL_CARDS: Card[] = [
     cost: { biomass: 6, nutrients: 1, water: 1 },
     incomePerTurn: { biomass: 2, nutrients: 0, water: 0 },
     trophicLevel: 'producer',
-    successionStage: 'woodland',
+    successionStage: 'mid-seral',
     tags: ['shade-tolerant'],
     placement: { minMoisture: 2, maxMoisture: 4, maxLight: 2, minLight: 1, minNutrients: 2 },
     sprite: 'shade-fern',
@@ -321,7 +321,7 @@ export const ALL_CARDS: Card[] = [
     cost: { biomass: 7, nutrients: 2, water: 2 },
     incomePerTurn: { biomass: 3, nutrients: 0, water: 0 },
     trophicLevel: 'consumer',
-    successionStage: 'woodland',
+    successionStage: 'mid-seral',
     tags: ['predator'],
     placement: { minMoisture: 1, maxMoisture: 4, minLight: 1, maxLight: 3, adjacentTag: 'prey' },
     adjacencyEffect: { biomassPerTurn: 2 },

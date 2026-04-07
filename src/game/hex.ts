@@ -1,4 +1,4 @@
-import { HexCoord, HexTile, hexKey, Card, PlacedCard, CardTag, LocalCondition } from './types';
+import { HexCoord, HexTile, hexKey, Card, PlacedCard, CardTag, LocalCondition, SerializedHexTile } from './types';
 
 // ============================================================
 // Hex Grid Generation & Utilities
@@ -249,6 +249,39 @@ export function processPropagation(grid: Map<string, HexTile>): PlacedCard[] {
   }
 
   return newPlacements.map(p => p.card);
+}
+
+/** Serialize a hex grid for persistent storage (strips placed cards) */
+export function serializeGrid(grid: Map<string, HexTile>): SerializedHexTile[] {
+  const tiles: SerializedHexTile[] = [];
+  grid.forEach(tile => {
+    tiles.push({
+      q: tile.coord.q,
+      r: tile.coord.r,
+      moisture: tile.moisture,
+      light: tile.light,
+      nutrients: tile.nutrients,
+      type: tile.type,
+    });
+  });
+  return tiles;
+}
+
+/** Reconstruct a hex grid from serialized data */
+export function deserializeGrid(data: SerializedHexTile[]): Map<string, HexTile> {
+  const grid = new Map<string, HexTile>();
+  for (const t of data) {
+    const tile: HexTile = {
+      coord: { q: t.q, r: t.r },
+      moisture: t.moisture,
+      light: t.light,
+      nutrients: t.nutrients,
+      type: t.type,
+      placedCard: null,
+    };
+    grid.set(hexKey(tile.coord), tile);
+  }
+  return grid;
 }
 
 /** Calculate adjacency income bonuses for all cards */

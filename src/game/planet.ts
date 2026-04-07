@@ -54,9 +54,9 @@ function makeDefaultAchievements(): Achievement[] {
     { id: 'first_run', name: 'First Steps', description: 'Complete your first run.', reward: 100, completed: false, check: 'runs_1' },
     { id: 'pioneer_3', name: 'Seeding Life', description: 'Advance 3 regions to Pioneer.', reward: 200, completed: false, check: 'regions_pioneer_3' },
     { id: 'pioneer_8', name: 'Spreading Green', description: 'Advance 8 regions to Pioneer.', reward: 400, completed: false, check: 'regions_pioneer_8' },
-    { id: 'grassland_3', name: 'Grassland Frontier', description: 'Advance 3 regions to Grassland.', reward: 500, completed: false, check: 'regions_grassland_3' },
-    { id: 'grassland_8', name: 'Prairie Dominion', description: 'Advance 8 regions to Grassland.', reward: 800, completed: false, check: 'regions_grassland_8' },
-    { id: 'woodland_3', name: 'Forest Dawn', description: 'Advance 3 regions to Woodland.', reward: 1000, completed: false, check: 'regions_woodland_3' },
+    { id: 'grassland_3', name: 'Early Succession', description: 'Advance 3 regions to Early Seral.', reward: 500, completed: false, check: 'regions_grassland_3' },
+    { id: 'grassland_8', name: 'Widespread Growth', description: 'Advance 8 regions to Early Seral.', reward: 800, completed: false, check: 'regions_grassland_8' },
+    { id: 'woodland_3', name: 'Maturing Ecosystems', description: 'Advance 3 regions to Mid Seral.', reward: 1000, completed: false, check: 'regions_woodland_3' },
     { id: 'climax_1', name: 'Climax Community', description: 'Advance 1 region to Climax.', reward: 1500, completed: false, check: 'regions_climax_1' },
     { id: 'climax_5', name: 'Flourishing World', description: 'Advance 5 regions to Climax.', reward: 3000, completed: false, check: 'regions_climax_5' },
     { id: 'diversity_10', name: 'Biodiversity', description: 'Have 10+ species in a single run.', reward: 600, completed: false, check: 'diversity_10' },
@@ -77,9 +77,9 @@ export function checkAchievements(planet: Planet, lastRunScore?: number, lastRun
 
     let met = false;
     if (type === 'runs') met = planet.runsCompleted >= value;
-    else if (type === 'regions_pioneer') met = planet.regions.filter(r => ['pioneer', 'grassland', 'woodland', 'climax'].includes(r.state)).length >= value;
-    else if (type === 'regions_grassland') met = planet.regions.filter(r => ['grassland', 'woodland', 'climax'].includes(r.state)).length >= value;
-    else if (type === 'regions_woodland') met = planet.regions.filter(r => ['woodland', 'climax'].includes(r.state)).length >= value;
+    else if (type === 'regions_pioneer') met = planet.regions.filter(r => ['pioneer', 'early-seral', 'mid-seral', 'climax'].includes(r.state)).length >= value;
+    else if (type === 'regions_grassland') met = planet.regions.filter(r => ['early-seral', 'mid-seral', 'climax'].includes(r.state)).length >= value;
+    else if (type === 'regions_woodland') met = planet.regions.filter(r => ['mid-seral', 'climax'].includes(r.state)).length >= value;
     else if (type === 'regions_climax') met = planet.regions.filter(r => r.state === 'climax').length >= value;
     else if (type === 'score' && lastRunScore !== undefined) met = lastRunScore >= value;
     else if (type === 'diversity' && lastRunDiversity !== undefined) met = lastRunDiversity >= value;
@@ -178,16 +178,54 @@ export function getPlanetNeighbors(coord: HexCoord, regions: Region[]): Region[]
   );
 }
 
+/**
+ * Advance a region's succession state.
+ * Requires that the region has at least one established species
+ * belonging to the target succession level.
+ * Succession: barren → pioneer → early-seral → mid-seral → climax
+ */
 export function advanceRegion(region: Region, score: number): void {
-  const progression: RegionState[] = ['locked', 'barren', 'pioneer', 'grassland', 'woodland', 'climax'];
+  const progression: RegionState[] = ['locked', 'barren', 'pioneer', 'early-seral', 'mid-seral', 'climax'];
   const currentIdx = progression.indexOf(region.state);
   if (currentIdx < 0 || region.state === 'climax') return;
 
-  let advance = 1;
-  if (score > 200) advance = 2;
-  if (score > 400) advance = 3;
+  // Map succession level to required species stage
+  const stageForLevel: Record<string, string> = {
+    'pioneer': 'pioneer',
+    'early-seral': 'early-seral',
+    'mid-seral': 'mid-seral',
+    'climax': 'climax',
+  };
 
-  const newIdx = Math.min(currentIdx + advance, progression.length - 1);
+  // Gather established species stages
+  const establishedStages = new Set(
+    region.seedBank
+      .filter(c => c.successionStage)
+      .map(c => c.successionStage!)
+  );
+
+  // Calculate how many levels to advance (score-based)
+  let maxAdvance = 1;
+  if (score > 200) maxAdvance = 2;
+  if (score > 400) maxAdvance = 3;
+
+  // Advance one level at a time, checking if the required species stage is established
+  let newIdx = currentIdx;
+  for (let step = 0; step < maxAdvance; step++) {
+    const nextIdx = newIdx + 1;
+    if (nextIdx >= progression.length) break;
+    const nextState = progression[nextIdx];
+    const requiredStage = stageForLevel[nextState];
+    // barren→pioneer always allowed with any score
+    if (nextState === 'pioneer') {
+      newIdx = nextIdx;
+    } else if (requiredStage && establishedStages.has(requiredStage as import('./types').SuccessionStage)) {
+      newIdx = nextIdx;
+    } else {
+      break; // Can't advance further without the right species
+    }
+  }
+
   region.state = progression[newIdx];
 }
 
